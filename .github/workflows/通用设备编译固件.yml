@@ -67,7 +67,7 @@ jobs:
           # Set up compilation source code
           if [[ "${{ inputs.source_branch }}" == *"openwrt"* ]]; then
               REPO_URL="https://github.com/openwrt/openwrt"
-              REPO_BRANCH="main"
+              REPO_BRANCH="openwrt-23.05"
               TAGS_NAME="v23.05.5"
           elif [[ "${{ inputs.source_branch }}" == *"lede"* ]]; then
               REPO_URL="https://github.com/coolsnowwolf/lede"
