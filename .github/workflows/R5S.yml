@@ -4,7 +4,13 @@
 #============================================================================================
 
 name: R5S
-      
+
+on:
+  repository_dispatch:
+  workflow_dispatch:
+  schedule:
+    - cron: 0 21 * * *
+
 env:
   FEEDS_CONF: config/r5s/feeds.conf.default
   CONFIG_FILE: config/r5s/config
