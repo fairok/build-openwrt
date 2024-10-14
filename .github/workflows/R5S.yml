@@ -3,28 +3,13 @@
 # Description: Build OpenWrt
 #============================================================================================
 
-name: 通用设备编译固件
-
-on:
-  repository_dispatch:
-  workflow_dispatch:
-    inputs:
-      source_branch:
-        description: "Select the source branch"
-        required: false
-        default: "openwrt-main"
-        type: choice
-        options:
-          - openwrt-main
-          - lede-master
-          - immortalwrt-master
-          - Lienol-master
+name: R5S
       
 env:
-  FEEDS_CONF: config/${{ inputs.source_branch }}/feeds.conf.default
-  CONFIG_FILE: config/${{ inputs.source_branch }}/config
-  DIY_P1_SH: config/${{ inputs.source_branch }}/diy-part1.sh
-  DIY_P2_SH: config/${{ inputs.source_branch }}/diy-part2.sh
+  FEEDS_CONF: config/r5s/feeds.conf.default
+  CONFIG_FILE: config/r5s/config
+  DIY_P1_SH: config/r5s/diy-part1.sh
+  DIY_P2_SH: config/r5s/diy-part2.sh
   UPLOAD_BIN_DIR: true
   UPLOAD_FIRMWARE: true
   UPLOAD_RELEASE: true
@@ -66,26 +51,10 @@ jobs:
         if: ${{ steps.init.outputs.status }} == 'success' && !cancelled()
         run: |
           # Set up compilation source code
-          if [[ "${{ inputs.source_branch }}" == *"openwrt"* ]]; then
-              REPO_URL="https://github.com/openwrt/openwrt"
-              REPO_BRANCH="main"
-              TAGS_NAME="official"
-          elif [[ "${{ inputs.source_branch }}" == *"lede"* ]]; then
-              REPO_URL="https://github.com/coolsnowwolf/lede"
-              REPO_BRANCH="master"
-              TAGS_NAME="lede"
-          elif [[ "${{ inputs.source_branch }}" == *"immortalwrt"* ]]; then
-              REPO_URL="https://github.com/immortalwrt/immortalwrt"
-              REPO_BRANCH="master"
-              TAGS_NAME="immortalwrt"
-          elif [[ "${{ inputs.source_branch }}" == *"Lienol"* ]]; then
-              REPO_URL="https://github.com/Lienol/openwrt"
-              REPO_BRANCH="22.03"
-              TAGS_NAME="Lienol"
-          else
-              echo "Unknown source code repository."
-              exit 1
-          fi
+          REPO_URL="https://github.com/openwrt/openwrt"
+          REPO_BRANCH="main"
+          TAGS_NAME="official"
+          
 
           # Clone source code
           git clone -q --single-branch --depth=1 --branch=${REPO_BRANCH} ${REPO_URL} openwrt
