@@ -3,7 +3,7 @@
 # Description: Build OpenWrt
 #============================================================================================
 
-name: R5S
+name: x86
 
 on:
   repository_dispatch:
