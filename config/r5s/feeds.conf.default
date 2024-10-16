@@ -3,8 +3,8 @@ src-git luci https://git.openwrt.org/project/luci.git # priority 1
 src-git routing https://git.openwrt.org/feed/routing.git # priority 1
 src-git telephony https://git.openwrt.org/feed/telephony.git # priority 1
 src-git smpackage https://github.com/kenzok8/small-package # priority 2
-src-git ledepackages https://github.com/coolsnowwolf/packages # priority 2
-src-git ledeluci https://github.com/coolsnowwolf/luci # priority 2
+#src-git ledepackages https://github.com/coolsnowwolf/packages # priority 2
+#src-git ledeluci https://github.com/coolsnowwolf/luci # priority 2
 #src-git helloworld https://github.com/fw876/helloworld
 #src-git socat https://github.com/chenmozhijin/luci-app-socat
 #src-git video https://github.com/openwrt/video.git
