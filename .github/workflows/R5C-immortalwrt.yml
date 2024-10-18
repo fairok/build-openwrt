@@ -3,7 +3,7 @@
 # Description: Build OpenWrt
 #============================================================================================
 
-name: R5S-immortalwrt
+name: R5C-immortalwrt
 
 on:
   repository_dispatch:
@@ -13,7 +13,7 @@ on:
 
 env:
   FEEDS_CONF: config/immortalwrt/feeds.conf.default
-  CONFIG_FILE: config/immortalwrt/r5s.config
+  CONFIG_FILE: config/immortalwrt/r5c.config
   DIY_P1_SH: config/immortalwrt/diy-part1.sh
   DIY_P2_SH: config/immortalwrt/diy-part2.sh
   UPLOAD_BIN_DIR: true
