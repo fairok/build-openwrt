@@ -8,7 +8,7 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
 
     steps:
     - name: Checkout code
@@ -23,12 +23,9 @@ jobs:
       run: |
         git clone --depth=1 --branch openwrt-24.10 https://github.com/immortalwrt/immortalwrt.git
 
-    - name: Copy custom feeds.conf
+    - name: Copy custom feeds & config
       run: |
         cp ./config/immortalwrt.feeds.conf.default immortalwrt/feeds.conf.default  # 将自定义的 feeds.conf 复制到源码目录中
-
-    - name: Copy custom .config
-      run: |
         cp ./config/R5S-immortalwrt.config immortalwrt/.config  # 将自定义的 .config 复制到源码目录中
 
     - name: Use cachewrtbuild action
