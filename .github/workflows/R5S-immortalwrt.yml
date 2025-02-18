@@ -17,7 +17,7 @@ jobs:
     - name: Set up dependencies
       run: |
         sudo apt update
-        sudo apt install -y build-essential ccache git libncurses5-dev zlib1g-dev gawk flex quilt unzip libssl-dev
+        sudo apt install -y build-essential ccache git libncurses5-dev zlib1g-dev gawk flex quilt unzip libssl-dev python3-pyelftools
 
     - name: Clone ImmortalWRT source
       run: |
