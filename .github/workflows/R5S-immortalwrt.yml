@@ -25,7 +25,7 @@ jobs:
 
     - name: Copy custom feeds.conf
       run: |
-        cp ./config/R5S.feeds.conf.default immortalwrt/feeds.conf.default  # 将自定义的 feeds.conf 复制到源码目录中
+        cp ./config/immortalwrt.feeds.conf.default immortalwrt/feeds.conf.default  # 将自定义的 feeds.conf 复制到源码目录中
 
     - name: Copy custom .config
       run: |
