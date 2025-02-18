@@ -1,4 +1,4 @@
-name: Build ImmortalWRT R5S Firmware
+name: R5S-ImmortalWRT
 
 on:
   repository_dispatch:
