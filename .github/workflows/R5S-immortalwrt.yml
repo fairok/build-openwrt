@@ -1,0 +1,58 @@
+name: Build ImmortalWRT R5S Firmware
+
+on:
+  repository_dispatch:
+  workflow_dispatch:
+  schedule:
+    - cron: 0 21 * * *
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Set up dependencies
+      run: |
+        sudo apt update
+        sudo apt install -y build-essential ccache git libncurses5-dev zlib1g-dev gawk flex quilt unzip libssl-dev
+
+    - name: Clone ImmortalWRT source
+      run: |
+        git clone --depth=1 --branch openwrt-24.10 https://github.com/immortalwrt/immortalwrt.git
+
+    - name: Copy custom feeds.conf
+      run: |
+        cp ./config/R5S.feeds.conf.default immortalwrt/feeds.conf.default  # 将自定义的 feeds.conf 复制到源码目录中
+
+    - name: Copy custom .config
+      run: |
+        cp ./config/R5S-immortalwrt.config immortalwrt/.config  # 将自定义的 .config 复制到源码目录中
+
+    - name: Use cachewrtbuild action
+      uses: klever1988/cachewrtbuild@main
+      with:
+        ccache: 'true'  # 启用 ccache，加速构建
+        mixkey: 'ramips'  # 设置目标平台为 R5S 使用的 ramips
+        prefix: 'immortalwrt'  # 使用的源码前缀
+        
+    - name: Set up R5S specific configuration
+      run: |
+        cd immortalwrt
+        git checkout openwrt-24.10
+        ./scripts/feeds update -a
+        ./scripts/feeds install -a
+
+    - name: Build firmware for R5S
+      run: |
+        cd immortalwrt
+        make defconfig
+        make -j$(nproc)
+
+    - name: Upload firmware
+      uses: actions/upload-artifact@v4
+      with:
+        name: r5s-firmware
+        path: immortalwrt/bin/targets/armvirt/64/r5s-firmware.img
