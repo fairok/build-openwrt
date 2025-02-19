@@ -45,9 +45,14 @@ jobs:
     - name: Build firmware for R5S
       run: |
         cd immortalwrt
-        make defconfig
         make -j$(nproc)
 
+    - name: Organize files
+      id: organize
+      run: |
+        cd openwrt/bin/targets/*/*
+        rm -rf packages
+          
     - name: Upload firmware
       uses: actions/upload-artifact@v4
       with:
