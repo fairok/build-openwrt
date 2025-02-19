@@ -8,11 +8,11 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v3
+      uses: actions/checkout@main
 
     - name: Set up dependencies
       run: |
@@ -21,7 +21,7 @@ jobs:
 
     - name: Clone ImmortalWRT source
       run: |
-        git clone --depth=1 --branch openwrt-24.10 https://github.com/immortalwrt/immortalwrt.git
+        git clone --depth=1 https://github.com/immortalwrt/immortalwrt.git
 
     - name: Copy custom feeds & config
       run: |
@@ -38,7 +38,7 @@ jobs:
     - name: Set up R5S specific configuration
       run: |
         cd immortalwrt
-        git checkout openwrt-24.10
+        git checkout
         ./scripts/feeds update -a
         ./scripts/feeds install -a
 
@@ -80,7 +80,7 @@ jobs:
         echo "::set-output name=status::success"
 
     - name: Upload firmware to release
-      uses: softprops/action-gh-release@v1
+      uses: softprops/action-gh-release@main
       if: steps.tag.outputs.status == 'success' && !cancelled()
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
