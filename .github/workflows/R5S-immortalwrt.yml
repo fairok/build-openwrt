@@ -6,6 +6,14 @@ on:
   schedule:
     - cron: 0 21 * * *
 
+env:
+  REPO_URL: https://github.com/immortalwrt/immortalwrt.git
+  FEEDS_CONF: config/immortalwrt.feeds.conf.default
+  CONFIG_FILE: config/immortalwrt.r5s.config
+  UPLOAD_FIRMWARE: true
+  UPLOAD_RELEASE: true
+  TZ: Asia/Shanghai
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -18,14 +26,15 @@ jobs:
       run: |
         sudo apt update
         sudo apt install -y build-essential ccache git libncurses5-dev zlib1g-dev gawk flex quilt unzip libssl-dev python3-pyelftools
+        sudo timedatectl set-timezone "${TZ}"
 
     - name: Clone ImmortalWRT source
       run: |
-        git clone --depth=1 https://github.com/immortalwrt/immortalwrt.git
+        git clone --depth=1 ${REPO_URL}
 
     - name: Copy custom feeds
       run: |
-        cp -f config/immortalwrt.feeds.conf.default immortalwrt/feeds.conf.default  # 将自定义的 feeds.conf 复制到源码目录中
+        cp -f ${FEEDS_CONF} immortalwrt/feeds.conf.default  # 将自定义的 feeds.conf 复制到源码目录中
 
     - name: Use cachewrtbuild action
       uses: klever1988/cachewrtbuild@main
@@ -43,7 +52,7 @@ jobs:
 
     - name: Load custom configuration
       run: |
-        cp -f config/R5S-immortalwrt.config immortalwrt/.config  # 将自定义的 .config 复制到源码目录中
+        cp -f ${CONFIG_FILE} immortalwrt/.config  # 将自定义的 .config 复制到源码目录中
 
     - name: Download package
       id: package
