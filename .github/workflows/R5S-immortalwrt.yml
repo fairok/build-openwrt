@@ -31,6 +31,10 @@ jobs:
         sudo timedatectl set-timezone "${TZ}"
         echo "status=success" >> ${GITHUB_OUTPUT}
 
+    - name: Clean up workspace
+      run: |
+        rm -rf /tmp/*
+
     - name: Clone ImmortalWRT source
       run: |
         git clone --depth=1 ${REPO_URL}
