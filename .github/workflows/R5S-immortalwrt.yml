@@ -45,6 +45,7 @@ jobs:
     - name: Copy custom feeds
       working-directory: ${WORK_DIR}
       run: |
+        cd /mnt
         cp -f ${FEEDS_CONF} immortalwrt/feeds.conf.default  # 将自定义的 feeds.conf 复制到源码目录中
 
     - name: Use cachewrtbuild action
