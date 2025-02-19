@@ -24,7 +24,6 @@ jobs:
 
     - name: Set up dependencies
       run: |
-        sudo rm -rf /usr/share/dotnet /etc/apt/sources.list.d /usr/local/lib/android 2>/dev/null
         sudo apt update
         sudo apt install -y build-essential ccache git libncurses5-dev zlib1g-dev gawk flex quilt unzip libssl-dev python3-pyelftools
         sudo apt -y autoremove --purge
