@@ -14,6 +14,7 @@ env:
   UPLOAD_RELEASE: true
   TZ: Asia/Shanghai
   WORK_DIR: openwrt
+  PLATFORM: ramips
 
 jobs:
   build:
@@ -64,7 +65,7 @@ jobs:
       uses: klever1988/cachewrtbuild@main
       with:
         ccache: 'true'  # 启用 ccache，加速构建
-        mixkey: 'ramips'  # 设置目标平台为 R5S 使用的 ramips
+        mixkey: ${{ env.PLATFORM }}  # 设置目标平台为 R5S 使用的 ramips
         prefix: ${{ env.WORK_DIR }}  # 使用的源码前缀
         
     - name: Set up R5S specific configuration
