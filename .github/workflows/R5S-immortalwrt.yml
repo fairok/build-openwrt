@@ -13,7 +13,6 @@ env:
   UPLOAD_FIRMWARE: true
   UPLOAD_RELEASE: true
   TZ: Asia/Shanghai
-  WORK_DIR: /mnt
 
 jobs:
   build:
@@ -22,28 +21,24 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@main
-      with:
-          path: ${WORK_DIR}
 
     - name: Set up dependencies
       run: |
-        #sudo apt update
-        #sudo apt -y purge azure-cli ghc* zulu* llvm* firefox google* dotnet* powershell openjdk* mongodb* moby* || true
-        #sudo apt install -y ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential bzip2 ccache clang cmake cpio curl device-tree-compiler ecj fastjar flex gawk gettext gcc-multilib g++-multilib git gnutls-dev gperf haveged help2man intltool lib32gcc-s1 libc6-dev-i386 libelf-dev libglib2.0-dev libgmp3-dev libltdl-dev libmpc-dev libmpfr-dev libncurses-dev libpython3-dev libreadline-dev libssl-dev libtool libyaml-dev libz-dev lld llvm lrzsz mkisofs msmtp nano ninja-build p7zip p7zip-full patch pkgconf python3 python3-pip python3-ply python3-docutils python3-pyelftools qemu-utils re2c rsync scons squashfs-tools subversion swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev zstd
-        #sudo apt -y autoremove --purge
-        #sudo apt clean
-        sudo chown ${USER}:${GROUPS} ${WORK_DIR}
+        sudo apt update
+        sudo apt -y purge azure-cli* aws* android* java* jdk* jse* ghc* zulu* llvm* firefox* google* dotnet* powershell openjdk* mongodb* moby* swift* postgres* docker* || true
+        sudo apt install -y ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential bzip2 ccache clang cmake cpio curl device-tree-compiler ecj fastjar flex gawk gettext gcc-multilib g++-multilib git gnutls-dev gperf haveged help2man intltool lib32gcc-s1 libc6-dev-i386 libelf-dev libglib2.0-dev libgmp3-dev libltdl-dev libmpc-dev libmpfr-dev libncurses-dev libpython3-dev libreadline-dev libssl-dev libtool libyaml-dev libz-dev lld llvm lrzsz mkisofs msmtp nano ninja-build p7zip p7zip-full patch pkgconf python3 python3-pip python3-ply python3-docutils python3-pyelftools qemu-utils re2c rsync scons squashfs-tools subversion swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev zstd
+        sudo apt -y autoremove --purge
+        sudo apt clean
         sudo timedatectl set-timezone "${TZ}"
         echo "status=success" >> ${GITHUB_OUTPUT}
 
     - name: Clone ImmortalWRT source
       run: |
-        git clone --depth=1 ${REPO_URL} /mnt/immortalwrt
+        git clone --depth=1 ${REPO_URL}
 
     - name: Copy custom feeds
       run: |
-        cd /mnt/immortalwrt
-        cp -f ${GITHUB_WORKSPACE}/${FEEDS_CONF} feeds.conf.default  # 将自定义的 feeds.conf 复制到源码目录中
+        cp -f ${FEEDS_CONF} feeds.conf.default  # 将自定义的 feeds.conf 复制到源码目录中
 
     - name: Use cachewrtbuild action
       uses: klever1988/cachewrtbuild@main
@@ -53,7 +48,6 @@ jobs:
         prefix: 'immortalwrt'  # 使用的源码前缀
         
     - name: Set up R5S specific configuration
-      working-directory: ${WORK_DIR}
       run: |
         cd immortalwrt
         git checkout
@@ -61,13 +55,11 @@ jobs:
         ./scripts/feeds install -a
 
     - name: Load custom configuration
-      working-directory: ${WORK_DIR}
       run: |
-        cp -f ${GITHUB_WORKSPACE}/${CONFIG_FILE} immortalwrt/.config  # 将自定义的 .config 复制到源码目录中
+        cp -f ${CONFIG_FILE} immortalwrt/.config  # 将自定义的 .config 复制到源码目录中
 
     - name: Download package
       id: package
-      working-directory: ${WORK_DIR}
       run: |
         cd immortalwrt
         make defconfig
@@ -79,7 +71,6 @@ jobs:
 
     - name: Build firmware for R5S
       id: build
-      working-directory: ${WORK_DIR}
       run: |
         cd immortalwrt
         make -j$(nproc) V=s
@@ -87,7 +78,6 @@ jobs:
 
     - name: Organize files
       id: organize
-      working-directory: ${WORK_DIR}
       if: steps.build.outputs.status == 'success' && !cancelled()
       run: |
         cd immortalwrt/bin/targets/*/*
