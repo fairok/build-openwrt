@@ -38,7 +38,7 @@ jobs:
 
     - name: Clone ImmortalWRT source
       run: |
-        git clone --depth=1 ${REPO_URL} /mnt
+        git clone --depth=1 ${REPO_URL} /mnt/immortalwrt
 
     - name: Copy custom feeds
       run: |
