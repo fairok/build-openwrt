@@ -26,7 +26,6 @@ jobs:
     - name: Copy custom feeds & config
       run: |
         cp -f config/immortalwrt.feeds.conf.default immortalwrt/feeds.conf.default  # 将自定义的 feeds.conf 复制到源码目录中
-        cp -f config/R5S-immortalwrt.config immortalwrt/.config  # 将自定义的 .config 复制到源码目录中
 
     - name: Use cachewrtbuild action
       uses: klever1988/cachewrtbuild@main
@@ -41,6 +40,10 @@ jobs:
         git checkout
         ./scripts/feeds update -a
         ./scripts/feeds install -a
+
+    - name: Load custom configuration
+      run: |
+        cp -f config/R5S-immortalwrt.config immortalwrt/.config  # 将自定义的 .config 复制到源码目录中
 
     - name: Download package
       id: package
