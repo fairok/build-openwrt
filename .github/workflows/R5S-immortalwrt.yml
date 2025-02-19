@@ -23,7 +23,7 @@ jobs:
       run: |
         git clone --depth=1 https://github.com/immortalwrt/immortalwrt.git
 
-    - name: Copy custom feeds & config
+    - name: Copy custom feeds
       run: |
         cp -f config/immortalwrt.feeds.conf.default immortalwrt/feeds.conf.default  # 将自定义的 feeds.conf 复制到源码目录中
 
