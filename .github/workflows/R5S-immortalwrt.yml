@@ -53,7 +53,7 @@ jobs:
       
     - name: Clone ImmortalWRT source
       run: |
-        git clone --depth=1 ${REPO_URL}
+        git clone --depth=1 ${REPO_URL} openwrt
 
     - name: Copy custom feeds
       run: |
@@ -68,7 +68,7 @@ jobs:
         
     - name: Set up R5S specific configuration
       run: |
-        cd immortalwrt
+        cd openwrt
         git checkout
         ./scripts/feeds update -a
         ./scripts/feeds install -a
@@ -80,7 +80,7 @@ jobs:
     - name: Download package
       id: package
       run: |
-        cd immortalwrt
+        cd openwrt
         make defconfig
         make download -j$(nproc)
 
@@ -91,7 +91,7 @@ jobs:
     - name: Build firmware for R5S
       id: build
       run: |
-        cd immortalwrt
+        cd openwrt
         make -j$(nproc) V=s
         echo "status=success" >> $GITHUB_OUTPUT
 
@@ -99,7 +99,7 @@ jobs:
       id: organize
       if: steps.build.outputs.status == 'success' && !cancelled()
       run: |
-        cd immortalwrt/bin/targets/*/*
+        cd openwrt/bin/targets/*/*
         rm -rf packages
         echo "FIRMWARE=$PWD" >> $GITHUB_ENV
         echo "status=success" >> $GITHUB_OUTPUT
