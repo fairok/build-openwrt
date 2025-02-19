@@ -42,6 +42,13 @@ jobs:
         ./scripts/feeds update -a
         ./scripts/feeds install -a
 
+    - name: Download package
+      id: package
+      run: |
+        cd immortalwrt
+        make defconfig
+        make download -j$(nproc)
+
     - name: Build firmware for R5S
       run: |
         cd immortalwrt
