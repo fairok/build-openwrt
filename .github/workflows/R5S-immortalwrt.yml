@@ -84,9 +84,10 @@ jobs:
         cd ${WORK_DIR}
         make defconfig
         make download -j$(nproc)
+        echo "status=success" >> $GITHUB_OUTPUT
 
     - name: Check space usage
-      if: (!cancelled())
+      if: steps.package.outputs.status == 'success' && !cancelled()
       run: df -hT
 
     - name: Build firmware for R5S
