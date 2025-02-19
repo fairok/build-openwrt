@@ -38,6 +38,7 @@ jobs:
     - name: Clone ImmortalWRT source
       working-directory: ${WORK_DIR}
       run: |
+        cd ${WORK_DIR}
         git clone --depth=1 ${REPO_URL}
 
     - name: Copy custom feeds
