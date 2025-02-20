@@ -68,7 +68,7 @@ jobs:
         mixkey: ${{ env.PLATFORM }}  # 设置目标平台为 R5S 使用的 ramips
         prefix: ${{ env.WORK_DIR }}  # 使用的源码前缀
         
-    - name: Set up R5S specific configuration
+    - name: Set up specific configuration
       run: |
         cd ${WORK_DIR}
         git checkout
@@ -91,7 +91,7 @@ jobs:
       if: steps.package.outputs.status == 'success' && !cancelled()
       run: df -hT
 
-    - name: Build firmware for R5S
+    - name: Build firmware
       id: build
       run: |
         cd ${WORK_DIR}
