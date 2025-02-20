@@ -1,4 +1,4 @@
-name: R5S-ImmortalWRT
+name: build-immortalwrt-r5s
 
 on:
   repository_dispatch:
