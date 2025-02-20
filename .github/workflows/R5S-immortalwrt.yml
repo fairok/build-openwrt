@@ -7,13 +7,13 @@ on:
     - cron: 0 21 * * *
 
 env:
-  REPO_URL: https://github.com/openwrt/openwrt #https://github.com/immortalwrt/immortalwrt.git
+  REPO_URL: https://github.com/immortalwrt/immortalwrt.git
   FEEDS_CONF: config/immortalwrt.feeds.conf.default
   CONFIG_FILE: config/immortalwrt.r5s.config
   UPLOAD_FIRMWARE: true
   UPLOAD_RELEASE: true
   TZ: Asia/Shanghai
-  WORK_DIR: openwrt
+  WORK_DIR: immortalwrt
   PLATFORM: ramips
 
 jobs:
