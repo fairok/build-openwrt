@@ -9,7 +9,7 @@ on:
 env:
   REPO_URL: https://github.com/immortalwrt/immortalwrt.git
   FEEDS_CONF: config/immortalwrt.feeds.conf.default
-  CONFIG_FILE: config/immortalwrt.r5s.config
+  CONFIG_FILE: config/r5s/immortalwrt.config
   DIY_P1_SH: config/diy-part1.sh
   DIY_P2_SH: config/diy-part2.sh
   UPLOAD_FIRMWARE: true
