@@ -5,7 +5,7 @@ src-git telephony https://github.com/openwrt/telephony.git
 #src-git video https://github.com/openwrt/video.git
 src-git helloworld https://github.com/fw876/helloworld.git
 src-git lucky https://github.com/gdy666/luci-app-lucky.git
-src-git kenzok8 https://github.com/kenzok8/openwrt-packages.git
+#src-git kenzok8 https://github.com/kenzok8/openwrt-packages.git
 #src-git targets https://github.com/openwrt/targets.git
 #src-git oldpackages http://git.openwrt.org/packages.git
 #src-link custom /usr/src/openwrt/custom-feed
