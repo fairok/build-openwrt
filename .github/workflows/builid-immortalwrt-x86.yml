@@ -103,7 +103,7 @@ jobs:
       id: build
       run: |
         cd ${WORK_DIR}
-        make -j$(nproc) V=sc
+        make -j1 V=sc
         echo "status=success" >> $GITHUB_OUTPUT
 
     - name: Organize files
