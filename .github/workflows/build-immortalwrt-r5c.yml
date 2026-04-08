@@ -8,6 +8,7 @@ on:
 
 env:
   REPO_URL: https://github.com/immortalwrt/immortalwrt.git
+  REPO_BRANCH: openwrt-24.10
   FEEDS_CONF: config/immortalwrt.feeds.conf.default
   CONFIG_FILE: config/r5c/immortalwrt.config
   DIY_P1_SH: config/diy-part1.sh
@@ -57,7 +58,7 @@ jobs:
       
     - name: Clone ImmortalWRT source
       run: |
-        git clone --depth=1 ${REPO_URL} ${WORK_DIR}
+        git clone --depth=1 --branch ${REPO_BRANCH} --single-branch ${REPO_URL} ${WORK_DIR}
 
     - name: Copy custom feeds
       run: |
