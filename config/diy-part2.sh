@@ -41,5 +41,63 @@ sed -i 's/root:::0:99999:7:::/root:$1$V4UetPzk$CYXluq4wUazHjmCDBCqXF.::0:99999:7
 
 # Apply patch
 # git apply ../config/patches/{0001*,0002*}.patch --directory=feeds/luci
+
+# ------------------------------- eMMC storage expansion started -------------------------------
+# Inject a first-boot script that automatically creates a /data partition on the
+# remaining unallocated eMMC space (R5S has 32 GB; rootfs only uses ~576 MiB).
+# The script runs once on first boot via uci-defaults and then removes itself.
+mkdir -p files/etc/uci-defaults
+cat > files/etc/uci-defaults/99-expand-emmc << 'BOOTSCRIPT'
+#!/bin/sh
+
+# Find the eMMC block device (prefer mmcblk1 which is the on-board eMMC on R5S;
+# fall back to the first mmcblk device found).
+DISK=""
+for dev in /dev/mmcblk1 /dev/mmcblk0; do
+    [ -b "$dev" ] && { DISK="$dev"; break; }
+done
+
+[ -z "$DISK" ] && { logger -t expand-emmc "No eMMC device found, skipping"; exit 0; }
+
+# Only proceed when the 3rd partition does not already exist
+[ -b "${DISK}p3" ] && { logger -t expand-emmc "Partition ${DISK}p3 already exists, skipping"; exit 0; }
+
+logger -t expand-emmc "Creating /data partition on ${DISK}"
+
+# Determine the end of the last existing partition dynamically so the new
+# partition starts right after it, regardless of future rootfs size changes.
+LAST_END="$(parted -s "$DISK" unit MiB print | awk '/^ *[0-9]/{end=$3} END{gsub(/MiB/,"",end); print end+1}')"
+[ -z "$LAST_END" ] && LAST_END=580
+
+parted -s "$DISK" mkpart primary ext4 "${LAST_END}MiB" 100% || {
+    logger -t expand-emmc "parted failed"
+    exit 1
+}
+
+# Allow the kernel to re-read the partition table
+partprobe "$DISK" 2>/dev/null || true
+sleep 2
+
+PART="${DISK}p3"
+[ -b "$PART" ] || { logger -t expand-emmc "Partition $PART not found after partprobe"; exit 1; }
+
+# Format the new partition as ext4 and label it "data"
+mkfs.ext4 -L data "$PART" || { logger -t expand-emmc "mkfs.ext4 failed"; exit 1; }
+
+# Register the mount in fstab so it persists across reboots.
+# Use the device path directly to avoid false matches on a pre-existing "data" label.
+uci set fstab.data=mount
+uci set fstab.data.device="$PART"
+uci set fstab.data.target=/data
+uci set fstab.data.fstype=ext4
+uci set fstab.data.options=rw,relatime
+uci set fstab.data.enabled=1
+uci commit fstab
+
+mkdir -p /data
+mount "$PART" /data && logger -t expand-emmc "/data mounted successfully ($(df -h /data | tail -1 | awk '{print $2}') total)"
+BOOTSCRIPT
+chmod +x files/etc/uci-defaults/99-expand-emmc
+# ------------------------------- eMMC storage expansion ends -------------------------------
 #
 # ------------------------------- Other ends -------------------------------
