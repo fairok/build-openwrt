@@ -140,7 +140,7 @@ jobs:
         # 使用 ccache 环境变量
         export PATH="/usr/lib/ccache:$PATH"
         # ARM Runner 上 nproc 返回的是 ARM 核心数（通常是 4）
-        make -j$(nproc) -l$(getconf _NPROCESSORS_ONLN) V=s || true
+        make -j$(nproc) -l$(getconf _NPROCESSORS_ONLN) V=sc || true
         echo "status=success" >> $GITHUB_OUTPUT
 
     - name: Check build result
