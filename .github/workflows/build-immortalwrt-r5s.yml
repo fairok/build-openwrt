@@ -22,7 +22,11 @@ env:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04-arm   # ✅ 关键优化：ARM 原生编译
+    runs-on: ubuntu-22.04-arm
+    # ✅ 修复1：添加权限，允许创建 Release
+    permissions:
+      contents: write
+      actions: read
 
     steps:
     - name: Checkout code
@@ -45,7 +49,6 @@ jobs:
       run: |
         sudo apt update
         sudo apt install -y ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential bzip2 ccache clang cmake cpio curl device-tree-compiler ecj fastjar flex gawk gettext git gnutls-dev gperf haveged help2man intltool libelf-dev libglib2.0-dev libgmp3-dev libltdl-dev libmpc-dev libmpfr-dev libncurses-dev libpython3-dev libreadline-dev libssl-dev libtool libyaml-dev libz-dev lld llvm lrzsz mkisofs msmtp nano ninja-build p7zip p7zip-full patch pkgconf python3 python3-pip python3-ply python3-docutils python3-pyelftools qemu-utils re2c rsync scons squashfs-tools subversion swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev zstd
-        # ARM Runner 不需要 gcc-multilib 和 libc6-dev-i386（这些是 x86 交叉编译用的）
         sudo apt -y autoremove --purge
         sudo apt clean
         sudo timedatectl set-timezone "${TZ}"
@@ -122,7 +125,6 @@ jobs:
       run: |
         cd ${WORK_DIR}
         make defconfig
-        # 并行下载，失败重试一次
         make download -j$(nproc) -l$(getconf _NPROCESSORS_ONLN) || true
         make download -j$(nproc) -l$(getconf _NPROCESSORS_ONLN) || true
         echo "status=success" >> $GITHUB_OUTPUT
@@ -133,15 +135,27 @@ jobs:
         echo "=== Space before build ==="
         df -hT
         
-    - name: Build firmware
+    - name: Build firmware (lightweight logs)
       id: build
       run: |
         cd ${WORK_DIR}
-        # 使用 ccache 环境变量
         export PATH="/usr/lib/ccache:$PATH"
-        # ARM Runner 上 nproc 返回的是 ARM 核心数（通常是 4）
-        make -j$(nproc) -l$(getconf _NPROCESSORS_ONLN) V=sc || true
-        echo "status=success" >> $GITHUB_OUTPUT
+        
+        echo "=== Starting build with lightweight logs (V=sc) ==="
+        if make -j$(nproc) -l$(getconf _NPROCESSORS_ONLN) V=sc; then
+          echo "Build successful!"
+          echo "status=success" >> $GITHUB_OUTPUT
+          exit 0
+        fi
+        
+        echo ""
+        echo "=== Build failed! Printing last 300 lines of verbose log ==="
+        echo ""
+        make -j1 V=s 2>&1 | tail -n 300
+        echo ""
+        echo "=== Build failed. Check the last 300 lines above for errors. ==="
+        echo "status=failed" >> $GITHUB_OUTPUT
+        exit 1
 
     - name: Check build result
       if: steps.build.outputs.status == 'success' && !cancelled()
@@ -180,20 +194,22 @@ jobs:
         echo "release_tag=R5S-$(date +"%Y.%m.%d-%H%M")" >> $GITHUB_OUTPUT
         echo "status=success" >> $GITHUB_OUTPUT
 
+    # ✅ 修复2：替换为 ncipollo/release-action，更稳定
     - name: Upload firmware to release
-      uses: softprops/action-gh-release@v1
+      uses: ncipollo/release-action@v1
       if: steps.tag.outputs.status == 'success' && !cancelled()
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
-        tag_name: ${{ steps.tag.outputs.release_tag }}
+        tag: ${{ steps.tag.outputs.release_tag }}
+        name: ${{ steps.tag.outputs.release_tag }}
         body: |
           ## ImmortalWrt R5S 固件 (ARM 原生编译)
           - 编译时间: ${{ steps.tag.outputs.release_tag }}
           - 平台: ${{ env.PLATFORM }}
           - 分支: ${{ env.REPO_BRANCH }}
           - 编译架构: ARM Runner (原生编译)
-        files: ${{ env.FIRMWARE }}/*
+        artifacts: ${{ env.FIRMWARE }}/*
+        allowUpdates: true
+        token: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Delete old workflow runs
       uses: GitRML/delete-workflow-runs@main
@@ -207,8 +223,6 @@ jobs:
       if: always()
       run: |
         cd ${WORK_DIR}
-        # 只清理下载的源码包，保留工具链缓存供下次使用
         rm -rf dl/
-        # 清理编译产生的临时文件（保留 staging_dir）
         make clean || true
         df -hT
