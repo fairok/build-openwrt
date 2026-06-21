@@ -18,6 +18,7 @@ env:
   TZ: Asia/Shanghai
   WORK_DIR: immortalwrt
   PLATFORM: ramips
+  CCACHE_SIZE: 5G
 
 jobs:
   build:
@@ -26,11 +27,13 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@main
+      with:
+        fetch-depth: 1
 
     - name: Free Disk Space (Ubuntu)
       uses: jlumbroso/free-disk-space@main
       with:
-        tool-cache: true  # 激进清理
+        tool-cache: true
         android: true
         dotnet: true
         haskell: true
@@ -47,65 +50,78 @@ jobs:
         sudo timedatectl set-timezone "${TZ}"
         echo "status=success" >> ${GITHUB_OUTPUT}
         
-    - name: Check space usage
+    - name: Check space usage (initial)
       if: (!cancelled())
       run: |
         echo "=== Initial disk space ==="
         df -hT
-        
-    - name: Cache ImmortalWRT source
+
+    - name: Cache ImmortalWRT source (.git)
       uses: actions/cache@v4
+      id: cache-source
       with:
         path: ${{ env.WORK_DIR }}/.git
         key: wrt-source-${{ env.REPO_BRANCH }}-${{ hashFiles('config/**') }}
         restore-keys: |
           wrt-source-${{ env.REPO_BRANCH }}-
-      
+
+    - name: Cache toolchain (staging_dir) and ccache
+      uses: actions/cache@v4
+      id: cache-toolchain
+      with:
+        path: |
+          ${{ env.WORK_DIR }}/staging_dir
+          ${{ env.WORK_DIR }}/.ccache
+        key: toolchain-${{ env.PLATFORM }}-${{ env.REPO_BRANCH }}-${{ hashFiles(env.CONFIG_FILE) }}
+        restore-keys: |
+          toolchain-${{ env.PLATFORM }}-${{ env.REPO_BRANCH }}-
+          toolchain-${{ env.PLATFORM }}-
+
     - name: Clone ImmortalWRT source
       run: |
-        if [ ! -d "${WORK_DIR}" ]; then
-          git clone --depth=1 --branch ${REPO_BRANCH} --single-branch ${REPO_URL} ${WORK_DIR}
-        else
+        if [ -d "${WORK_DIR}/.git" ]; then
           cd ${WORK_DIR}
           git fetch origin ${REPO_BRANCH}
           git checkout ${REPO_BRANCH}
+        else
+          git clone --depth=1 --branch ${REPO_BRANCH} --single-branch ${REPO_URL} ${WORK_DIR}
         fi
 
-    - name: Copy custom feeds
+    - name: Copy custom feeds and run diy-part1
       run: |
         cp -f ${FEEDS_CONF} ${WORK_DIR}/feeds.conf.default
         chmod +x ${DIY_P1_SH}
         cd ${WORK_DIR}
         ${GITHUB_WORKSPACE}/${DIY_P1_SH}
 
-    - name: Use cachewrtbuild action
-      uses: klever1988/cachewrtbuild@main
-      with:
-        ccache: 'true'
-        ccache_size: '3G'
-        mixkey: ${{ env.PLATFORM }}
-        prefix: ${{ env.WORK_DIR }}
-        
     - name: Update feeds
       run: |
         cd ${WORK_DIR}
-        git checkout
         ./scripts/feeds update -a -f
         ./scripts/feeds install -a
 
-    - name: Load custom configuration
+    - name: Load custom configuration and run diy-part2
       run: |
         cp -f ${CONFIG_FILE} ${WORK_DIR}/.config
         chmod +x ${DIY_P2_SH}
         cd ${WORK_DIR}
         ${GITHUB_WORKSPACE}/${DIY_P2_SH}
 
-    - name: Download package
+    - name: Configure ccache
+      run: |
+        mkdir -p ${WORK_DIR}/.ccache
+        ccache -C || true
+        ccache -M ${CCACHE_SIZE}
+        echo "ccache max size: $(ccache -s | grep 'max size' | awk '{print $3, $4}')"
+
+    - name: Make defconfig and download packages
       id: package
       run: |
         cd ${WORK_DIR}
         make defconfig
-        make download -j$(nproc) -l$(getconf _NPROCESSORS_ONLN)
+        # 并行下载，失败重试一次
+        make download -j$(nproc) -l$(getconf _NPROCESSORS_ONLN) || true
+        make download -j$(nproc) -l$(getconf _NPROCESSORS_ONLN) || true
         echo "status=success" >> $GITHUB_OUTPUT
 
     - name: Check space usage before build
@@ -118,6 +134,8 @@ jobs:
       id: build
       run: |
         cd ${WORK_DIR}
+        # 使用 ccache 环境变量
+        export PATH="/usr/lib/ccache:$PATH"
         make -j$(nproc) -l$(getconf _NPROCESSORS_ONLN) V=s || true
         echo "status=success" >> $GITHUB_OUTPUT
 
@@ -141,11 +159,11 @@ jobs:
         echo "FIRMWARE=$PWD" >> $GITHUB_ENV
         echo "status=success" >> $GITHUB_OUTPUT
           
-    - name: Upload firmware directory
+    - name: Upload firmware directory (artifact)
       uses: actions/upload-artifact@main
       if: steps.organize.outputs.status == 'success' && !cancelled()
       with:
-        name: OpenWrt_firmware${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
+        name: OpenWrt_firmware_R5S_${{ github.run_number }}
         path: ${{ env.FIRMWARE }}
         retention-days: 5
 
@@ -153,32 +171,37 @@ jobs:
       id: tag
       if: steps.organize.outputs.status == 'success' && env.UPLOAD_RELEASE == 'true' && !cancelled()
       run: |
-        touch release.txt
-        echo "release_tag=$(date +"%Y.%m.%d-%H%M")" >> $GITHUB_OUTPUT
+        echo "release_tag=R5S-$(date +"%Y.%m.%d-%H%M")" >> $GITHUB_OUTPUT
         echo "status=success" >> $GITHUB_OUTPUT
 
     - name: Upload firmware to release
       uses: softprops/action-gh-release@v1
       if: steps.tag.outputs.status == 'success' && !cancelled()
       env:
-        GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         tag_name: ${{ steps.tag.outputs.release_tag }}
-        body_path: release.txt
+        body: |
+          ## ImmortalWrt R5S 固件
+          - 编译时间: ${{ steps.tag.outputs.release_tag }}
+          - 平台: ${{ env.PLATFORM }}
+          - 基于: ${{ env.REPO_BRANCH }} 分支
         files: ${{ env.FIRMWARE }}/*
 
-    - name: Delete workflow runs
+    - name: Delete old workflow runs
       uses: GitRML/delete-workflow-runs@main
       if: steps.tag.outputs.status == 'success' && !cancelled()
       with:
         retain_days: 10
         keep_minimum_runs: 10
-        token: ${{ secrets.GH_TOKEN }}
+        token: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Clean up workspace
+    - name: Clean up workspace (preserve cache)
       if: always()
       run: |
         cd ${WORK_DIR}
-        make clean
+        # 只清理下载的源码包，保留工具链缓存供下次使用
         rm -rf dl/
+        # 清理编译产生的临时文件（保留 staging_dir）
+        make clean || true
         df -hT
