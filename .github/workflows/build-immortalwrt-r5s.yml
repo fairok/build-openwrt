@@ -1,249 +1,287 @@
 name: build-immortalwrt-r5s
 
 on:
-  repository_dispatch:
-  workflow_dispatch:
-  schedule:
-    - cron: 0 21 * * *
+repository_dispatch:
+workflow_dispatch:
+schedule:
+- cron: '0 21 * * *'
 
 env:
-  REPO_URL: https://github.com/immortalwrt/immortalwrt.git
-  REPO_BRANCH: master
-  FEEDS_CONF: config/immortalwrt.feeds.conf.default
-  CONFIG_FILE: config/r5s/immortalwrt.config
-  DIY_P1_SH: config/diy-part1.sh
-  DIY_P2_SH: config/diy-part2.sh
-  UPLOAD_FIRMWARE: true
-  UPLOAD_RELEASE: true
-  TZ: Asia/Shanghai
-  WORK_DIR: immortalwrt
-  PLATFORM: ramips
-  CCACHE_SIZE: 5G
+REPO_URL: https://github.com/immortalwrt/immortalwrt.git
+REPO_BRANCH: master
+
+FEEDS_CONF: config/immortalwrt.feeds.conf.default
+CONFIG_FILE: config/r5s/immortalwrt.config
+
+DIY_P1_SH: config/diy-part1.sh
+DIY_P2_SH: config/diy-part2.sh
+
+WORK_DIR: immortalwrt
+
+PLATFORM: rockchip
+
+TZ: Asia/Shanghai
+
+CCACHE_SIZE: 5G
+
+UPLOAD_FIRMWARE: true
+UPLOAD_RELEASE: true
 
 jobs:
-  build:
-    runs-on: ubuntu-22.04-arm
-    permissions:
-      contents: write
-      actions: read
+build:
+runs-on: ubuntu-22.04-arm
 
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@main
-      with:
-        fetch-depth: 1
+```
+permissions:
+  contents: write
+  actions: read
 
-    - name: Free Disk Space (Ubuntu ARM)
-      uses: jlumbroso/free-disk-space@main
-      with:
-        tool-cache: true
-        android: true
-        dotnet: true
-        haskell: true
-        large-packages: true
-        docker-images: true
-        swap-storage: true
+steps:
 
-    - name: Set up dependencies (ARM optimized)
-      run: |
-        sudo apt update
-        sudo apt install -y ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential bzip2 ccache clang cmake cpio curl device-tree-compiler ecj fastjar flex gawk gettext git gnutls-dev gperf haveged help2man intltool libelf-dev libglib2.0-dev libgmp3-dev libltdl-dev libmpc-dev libmpfr-dev libncurses-dev libpython3-dev libreadline-dev libssl-dev libtool libyaml-dev libz-dev lld llvm lrzsz mkisofs msmtp nano ninja-build p7zip p7zip-full patch pkgconf python3 python3-pip python3-ply python3-docutils python3-pyelftools qemu-utils re2c rsync scons squashfs-tools subversion swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev zstd
-        sudo apt -y autoremove --purge
-        sudo apt clean
-        sudo timedatectl set-timezone "${TZ}"
-        echo "status=success" >> ${GITHUB_OUTPUT}
-        
-    - name: Check space usage (initial)
-      if: (!cancelled())
-      run: |
-        echo "=== Initial disk space ==="
-        df -hT
-        echo "=== Architecture ==="
-        uname -m
+  - name: Checkout repository
+    uses: actions/checkout@v4
+    with:
+      fetch-depth: 1
 
-    - name: Cache ImmortalWRT source (.git)
-      uses: actions/cache@v4
-      id: cache-source
-      with:
-        path: ${{ env.WORK_DIR }}/.git
-        key: wrt-source-${{ env.REPO_BRANCH }}-${{ hashFiles('config/**') }}
-        restore-keys: |
-          wrt-source-${{ env.REPO_BRANCH }}-
+  - name: Free Disk Space
+    uses: jlumbroso/free-disk-space@main
+    with:
+      tool-cache: true
+      android: true
+      dotnet: true
+      haskell: true
+      large-packages: true
+      docker-images: true
+      swap-storage: true
 
-    - name: Cache toolchain (staging_dir) and ccache
-      uses: actions/cache@v4
-      id: cache-toolchain
-      with:
-        path: |
-          ${{ env.WORK_DIR }}/staging_dir
-          ${{ env.WORK_DIR }}/.ccache
-        key: toolchain-arm-${{ env.PLATFORM }}-${{ env.REPO_BRANCH }}-${{ hashFiles(env.CONFIG_FILE) }}
-        restore-keys: |
-          toolchain-arm-${{ env.PLATFORM }}-${{ env.REPO_BRANCH }}-
-          toolchain-arm-${{ env.PLATFORM }}-
+  - name: Install dependencies
+    run: |
+      sudo apt update
 
-    # ===== 修复点1：强化源码克隆 =====
-    - name: Clone ImmortalWRT source
-      run: |
-        # 如果 .git 缓存存在，尝试增量更新
-        if [ -d "${WORK_DIR}/.git" ]; then
-          echo "=== Git cache found, updating existing repo ==="
-          cd ${WORK_DIR}
-          git fetch origin ${REPO_BRANCH}
-          git checkout ${REPO_BRANCH}
-          git pull origin ${REPO_BRANCH}
-        else
-          # 如果目录存在但不完整，删除重来
-          if [ -d "${WORK_DIR}" ]; then
-            echo "=== Removing incomplete WORK_DIR ==="
-            rm -rf ${WORK_DIR}
-          fi
-          echo "=== Cloning ImmortalWRT source ==="
-          git clone --depth=1 --branch ${REPO_BRANCH} --single-branch ${REPO_URL} ${WORK_DIR}
+      sudo apt install -y \
+      ack antlr3 asciidoc autoconf automake autopoint \
+      binutils bison build-essential bzip2 \
+      ccache clang cmake cpio curl \
+      device-tree-compiler ecj fastjar flex gawk gettext \
+      git gnutls-dev gperf haveged help2man intltool \
+      libelf-dev libglib2.0-dev libgmp3-dev libltdl-dev \
+      libmpc-dev libmpfr-dev libncurses-dev \
+      libpython3-dev libreadline-dev libssl-dev \
+      libtool libyaml-dev libz-dev \
+      lld llvm lrzsz mkisofs msmtp nano ninja-build \
+      p7zip p7zip-full patch pkgconf \
+      python3 python3-pip python3-ply python3-docutils \
+      python3-pyelftools qemu-utils re2c rsync scons \
+      squashfs-tools subversion swig texinfo uglifyjs \
+      upx-ucl unzip vim wget xmlto xxd \
+      zlib1g-dev zstd
+
+      sudo timedatectl set-timezone "${TZ}"
+
+  - name: Show environment
+    run: |
+      echo "Architecture:"
+      uname -m
+
+      echo "Disk:"
+      df -hT
+
+  - name: Cache Toolchain and ccache
+    uses: actions/cache@v4
+    id: cache-toolchain
+    with:
+      path: |
+        ${{ env.WORK_DIR }}/staging_dir/toolchain-*
+        ${{ env.WORK_DIR }}/staging_dir/host
+        ${{ env.WORK_DIR }}/.ccache
+      key: toolchain-${{ runner.arch }}-${{ env.PLATFORM }}-${{ env.REPO_BRANCH }}-${{ hashFiles(env.CONFIG_FILE) }}
+      restore-keys: |
+        toolchain-${{ runner.arch }}-${{ env.PLATFORM }}-${{ env.REPO_BRANCH }}-
+        toolchain-${{ runner.arch }}-${{ env.PLATFORM }}-
+
+  - name: Cache Status
+    run: |
+      echo "Toolchain Cache Hit: ${{ steps.cache-toolchain.outputs.cache-hit }}"
+
+  - name: Clone ImmortalWrt
+    run: |
+      git clone \
+        --depth=1 \
+        --single-branch \
+        --branch ${REPO_BRANCH} \
+        ${REPO_URL} \
+        ${WORK_DIR}
+
+      test -f ${WORK_DIR}/scripts/feeds
+
+  - name: Load custom feeds
+    run: |
+      cp -f ${FEEDS_CONF} ${WORK_DIR}/feeds.conf.default
+
+      chmod +x ${DIY_P1_SH}
+
+      cd ${WORK_DIR}
+
+      ${GITHUB_WORKSPACE}/${DIY_P1_SH}
+
+  - name: Update feeds
+    run: |
+      cd ${WORK_DIR}
+
+      chmod +x scripts/feeds
+
+      ./scripts/feeds update -a -f
+
+      ./scripts/feeds install -a
+
+  - name: Load custom configuration
+    run: |
+      cp -f ${CONFIG_FILE} ${WORK_DIR}/.config
+
+      chmod +x ${DIY_P2_SH}
+
+      cd ${WORK_DIR}
+
+      ${GITHUB_WORKSPACE}/${DIY_P2_SH}
+
+  - name: Configure ccache
+    run: |
+      mkdir -p ${WORK_DIR}/.ccache
+
+      ccache -M ${CCACHE_SIZE}
+
+      ccache -s
+
+  - name: Record build start time
+    run: |
+      echo "BUILD_START=$(date +%s)" >> $GITHUB_ENV
+
+  - name: Download packages
+    id: package
+    run: |
+      cd ${WORK_DIR}
+
+      make defconfig
+
+      for i in {1..3}
+      do
+        echo "Download attempt ${i}"
+
+        if make download -j$(nproc)
+        then
+          break
         fi
-        
-        # 验证关键文件存在
-        if [ ! -f "${WORK_DIR}/scripts/feeds" ]; then
-          echo "=== ERROR: scripts/feeds not found! ==="
-          ls -la ${WORK_DIR}/scripts/ 2>/dev/null || echo "scripts/ directory missing"
-          exit 1
-        fi
-        
-        echo "=== Clone successful, scripts/feeds exists. ==="
-    # ===== 修复点1结束 =====
 
-    - name: Copy custom feeds and run diy-part1
-      run: |
-        cp -f ${FEEDS_CONF} ${WORK_DIR}/feeds.conf.default
-        chmod +x ${DIY_P1_SH}
-        cd ${WORK_DIR}
-        ${GITHUB_WORKSPACE}/${DIY_P1_SH}
+        sleep 10
+      done
 
-    # ===== 修复点2：确保 feeds 脚本可执行 =====
-    - name: Update feeds
-      run: |
-        cd ${WORK_DIR}
-        chmod +x scripts/feeds
-        ./scripts/feeds update -a -f
-        ./scripts/feeds install -a
-    # ===== 修复点2结束 =====
+      echo "status=success" >> $GITHUB_OUTPUT
 
-    - name: Load custom configuration and run diy-part2
-      run: |
-        cp -f ${CONFIG_FILE} ${WORK_DIR}/.config
-        chmod +x ${DIY_P2_SH}
-        cd ${WORK_DIR}
-        ${GITHUB_WORKSPACE}/${DIY_P2_SH}
+  - name: Show disk before build
+    run: |
+      df -hT
 
-    - name: Configure ccache
-      run: |
-        mkdir -p ${WORK_DIR}/.ccache
-        ccache -C || true
-        ccache -M ${CCACHE_SIZE}
-        echo "ccache max size: $(ccache -s | grep 'max size' | awk '{print $3, $4}')"
+  - name: Build firmware
+    id: build
+    run: |
+      cd ${WORK_DIR}
 
-    - name: Make defconfig and download packages
-      id: package
-      run: |
-        cd ${WORK_DIR}
-        make defconfig
-        make download -j$(nproc) -l$(getconf _NPROCESSORS_ONLN) || true
-        make download -j$(nproc) -l$(getconf _NPROCESSORS_ONLN) || true
+      export PATH="/usr/lib/ccache:$PATH"
+
+      if make -j$(nproc) V=sc
+      then
         echo "status=success" >> $GITHUB_OUTPUT
+      else
+        echo ""
+        echo "=========================="
+        echo "BUILD FAILED"
+        echo "=========================="
 
-    - name: Check space usage before build
-      if: steps.package.outputs.status == 'success' && !cancelled()
-      run: |
-        echo "=== Space before build ==="
-        df -hT
-        
-    - name: Build firmware (lightweight logs)
-      id: build
-      run: |
-        cd ${WORK_DIR}
-        export PATH="/usr/lib/ccache:$PATH"
-        
-        echo "=== Starting build with lightweight logs (V=sc) ==="
-        if make -j$(nproc) -l$(getconf _NPROCESSORS_ONLN) V=sc; then
-          echo "Build successful!"
-          echo "status=success" >> $GITHUB_OUTPUT
-          exit 0
-        fi
-        
-        echo ""
-        echo "=== Build failed! Printing last 300 lines of verbose log ==="
-        echo ""
-        make -j1 V=s 2>&1 | tail -n 300
-        echo ""
-        echo "=== Build failed. Check the last 300 lines above for errors. ==="
+        make -j1 V=s 2>&1 | tail -300
+
         echo "status=failed" >> $GITHUB_OUTPUT
+
         exit 1
+      fi
 
-    - name: Check build result
-      if: steps.build.outputs.status == 'success' && !cancelled()
-      run: |
-        if [ -d "${WORK_DIR}/bin/targets" ]; then
-          echo "Build successful!"
-          echo "Generated files:"
-          ls -lh ${WORK_DIR}/bin/targets/*/*/*.bin 2>/dev/null || echo "No .bin files found"
-          du -sh ${WORK_DIR}/bin/targets/*
-        else
-          echo "Build failed - no output directory"
-          exit 1
-        fi
+  - name: Build Statistics
+    if: steps.build.outputs.status == 'success'
+    run: |
+      END=$(date +%s)
 
-    - name: Organize files
-      id: organize
-      if: steps.build.outputs.status == 'success' && !cancelled()
-      run: |
-        cd ${WORK_DIR}/bin/targets/*/*
-        rm -rf packages
-        echo "FIRMWARE=$PWD" >> $GITHUB_ENV
-        echo "status=success" >> $GITHUB_OUTPUT
-          
-    - name: Upload firmware directory (artifact)
-      uses: actions/upload-artifact@main
-      if: steps.organize.outputs.status == 'success' && !cancelled()
-      with:
-        name: OpenWrt_firmware_R5S_${{ github.run_number }}
-        path: ${{ env.FIRMWARE }}
-        retention-days: 5
+      COST=$((END-BUILD_START))
 
-    - name: Generate release tag
-      id: tag
-      if: steps.organize.outputs.status == 'success' && env.UPLOAD_RELEASE == 'true' && !cancelled()
-      run: |
-        echo "release_tag=R5S-$(date +"%Y.%m.%d-%H%M")" >> $GITHUB_OUTPUT
-        echo "status=success" >> $GITHUB_OUTPUT
+      echo "Build Time: $((COST/60)) minutes"
 
-    - name: Upload firmware to release
-      uses: ncipollo/release-action@v1
-      if: steps.tag.outputs.status == 'success' && !cancelled()
-      with:
-        tag: ${{ steps.tag.outputs.release_tag }}
-        name: ${{ steps.tag.outputs.release_tag }}
-        body: |
-          ## ImmortalWrt R5S 固件 (ARM 原生编译)
-          - 编译时间: ${{ steps.tag.outputs.release_tag }}
-          - 平台: ${{ env.PLATFORM }}
-          - 分支: ${{ env.REPO_BRANCH }}
-          - 编译架构: ARM Runner (原生编译)
-        artifacts: ${{ env.FIRMWARE }}/*
-        allowUpdates: true
-        token: ${{ secrets.GITHUB_TOKEN }}
+      ccache -s
 
-    - name: Delete old workflow runs
-      uses: GitRML/delete-workflow-runs@main
-      if: steps.tag.outputs.status == 'success' && !cancelled()
-      with:
-        retain_days: 10
-        keep_minimum_runs: 10
-        token: ${{ secrets.GITHUB_TOKEN }}
+  - name: Check build result
+    if: steps.build.outputs.status == 'success'
+    run: |
+      ls -lh ${WORK_DIR}/bin/targets/*/*/
 
-    - name: Clean up workspace (preserve cache)
-      if: always()
-      run: |
-        cd ${WORK_DIR}
-        rm -rf dl/
-        make clean || true
-        df -hT
+  - name: Organize files
+    id: organize
+    if: steps.build.outputs.status == 'success'
+    run: |
+      cd ${WORK_DIR}/bin/targets/*/*
+
+      rm -rf packages
+
+      echo "FIRMWARE=$PWD" >> $GITHUB_ENV
+
+      echo "status=success" >> $GITHUB_OUTPUT
+
+  - name: Upload firmware artifact
+    uses: actions/upload-artifact@v4
+    if: steps.organize.outputs.status == 'success'
+    with:
+      name: ImmortalWrt-R5S-${{ github.run_number }}
+      path: ${{ env.FIRMWARE }}
+      retention-days: 5
+
+  - name: Generate release tag
+    id: tag
+    if: steps.organize.outputs.status == 'success'
+    run: |
+      echo "release_tag=latest-r5s" >> $GITHUB_OUTPUT
+      echo "status=success" >> $GITHUB_OUTPUT
+
+  - name: Upload Release
+    uses: ncipollo/release-action@v1
+    if: steps.tag.outputs.status == 'success'
+    with:
+      tag: latest-r5s
+      name: Latest NanoPi R5S Build
+
+      allowUpdates: true
+      removeArtifacts: true
+      replacesArtifacts: true
+
+      artifacts: ${{ env.FIRMWARE }}/*
+
+      token: ${{ secrets.GITHUB_TOKEN }}
+
+      body: |
+        ImmortalWrt Auto Build
+
+        Device: NanoPi R5S
+        Branch: master
+        Platform: Rockchip RK3568
+
+  - name: Delete old workflow runs
+    uses: GitRML/delete-workflow-runs@main
+    with:
+      retain_days: 10
+      keep_minimum_runs: 10
+      token: ${{ secrets.GITHUB_TOKEN }}
+
+  - name: Cleanup
+    if: always()
+    run: |
+      cd ${WORK_DIR}
+
+      rm -rf dl/
+
+      df -hT
+```
