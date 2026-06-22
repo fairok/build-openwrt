@@ -1,287 +1,277 @@
 name: build-immortalwrt-r5s
 
 on:
-repository_dispatch:
-workflow_dispatch:
-schedule:
-- cron: '0 21 * * *'
+  repository_dispatch:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 21 * * *'
 
 env:
-REPO_URL: https://github.com/immortalwrt/immortalwrt.git
-REPO_BRANCH: master
+  REPO_URL: https://github.com/immortalwrt/immortalwrt.git
+  REPO_BRANCH: master
 
-FEEDS_CONF: config/immortalwrt.feeds.conf.default
-CONFIG_FILE: config/r5s/immortalwrt.config
+  FEEDS_CONF: config/immortalwrt.feeds.conf.default
+  CONFIG_FILE: config/r5s/immortalwrt.config
 
-DIY_P1_SH: config/diy-part1.sh
-DIY_P2_SH: config/diy-part2.sh
+  DIY_P1_SH: config/diy-part1.sh
+  DIY_P2_SH: config/diy-part2.sh
 
-WORK_DIR: immortalwrt
+  WORK_DIR: immortalwrt
 
-PLATFORM: rockchip
+  PLATFORM: rockchip
 
-TZ: Asia/Shanghai
+  TZ: Asia/Shanghai
 
-CCACHE_SIZE: 5G
+  CCACHE_SIZE: 5G
 
-UPLOAD_FIRMWARE: true
-UPLOAD_RELEASE: true
+  UPLOAD_FIRMWARE: true
+  UPLOAD_RELEASE: true
 
 jobs:
-build:
-runs-on: ubuntu-22.04-arm
+  build:
+    runs-on: ubuntu-22.04-arm
 
-```
-permissions:
-  contents: write
-  actions: read
+    permissions:
+      contents: write
+      actions: read
 
-steps:
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
 
-  - name: Checkout repository
-    uses: actions/checkout@v4
-    with:
-      fetch-depth: 1
+      - name: Free Disk Space
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
 
-  - name: Free Disk Space
-    uses: jlumbroso/free-disk-space@main
-    with:
-      tool-cache: true
-      android: true
-      dotnet: true
-      haskell: true
-      large-packages: true
-      docker-images: true
-      swap-storage: true
+      - name: Install dependencies
+        run: |
+          sudo apt update
 
-  - name: Install dependencies
-    run: |
-      sudo apt update
+          sudo apt install -y \
+          ack antlr3 asciidoc autoconf automake autopoint \
+          binutils bison build-essential bzip2 \
+          ccache clang cmake cpio curl \
+          device-tree-compiler ecj fastjar flex gawk gettext \
+          git gnutls-dev gperf haveged help2man intltool \
+          libelf-dev libglib2.0-dev libgmp3-dev libltdl-dev \
+          libmpc-dev libmpfr-dev libncurses-dev \
+          libpython3-dev libreadline-dev libssl-dev \
+          libtool libyaml-dev libz-dev \
+          lld llvm lrzsz mkisofs msmtp nano ninja-build \
+          p7zip p7zip-full patch pkgconf \
+          python3 python3-pip python3-ply python3-docutils \
+          python3-pyelftools qemu-utils re2c rsync scons \
+          squashfs-tools subversion swig texinfo uglifyjs \
+          upx-ucl unzip vim wget xmlto xxd \
+          zlib1g-dev zstd
 
-      sudo apt install -y \
-      ack antlr3 asciidoc autoconf automake autopoint \
-      binutils bison build-essential bzip2 \
-      ccache clang cmake cpio curl \
-      device-tree-compiler ecj fastjar flex gawk gettext \
-      git gnutls-dev gperf haveged help2man intltool \
-      libelf-dev libglib2.0-dev libgmp3-dev libltdl-dev \
-      libmpc-dev libmpfr-dev libncurses-dev \
-      libpython3-dev libreadline-dev libssl-dev \
-      libtool libyaml-dev libz-dev \
-      lld llvm lrzsz mkisofs msmtp nano ninja-build \
-      p7zip p7zip-full patch pkgconf \
-      python3 python3-pip python3-ply python3-docutils \
-      python3-pyelftools qemu-utils re2c rsync scons \
-      squashfs-tools subversion swig texinfo uglifyjs \
-      upx-ucl unzip vim wget xmlto xxd \
-      zlib1g-dev zstd
+          sudo timedatectl set-timezone "${TZ}"
 
-      sudo timedatectl set-timezone "${TZ}"
+      - name: Show environment
+        run: |
+          echo "Architecture:"
+          uname -m
 
-  - name: Show environment
-    run: |
-      echo "Architecture:"
-      uname -m
+          echo "Disk:"
+          df -hT
 
-      echo "Disk:"
-      df -hT
+      - name: Cache Toolchain and ccache
+        uses: actions/cache@v4
+        id: cache-toolchain
+        with:
+          path: |
+            ${{ env.WORK_DIR }}/staging_dir/toolchain-*
+            ${{ env.WORK_DIR }}/staging_dir/host
+            ${{ env.WORK_DIR }}/.ccache
+          key: toolchain-${{ runner.arch }}-${{ env.PLATFORM }}-${{ env.REPO_BRANCH }}-${{ hashFiles(env.CONFIG_FILE) }}
+          restore-keys: |
+            toolchain-${{ runner.arch }}-${{ env.PLATFORM }}-${{ env.REPO_BRANCH }}-
+            toolchain-${{ runner.arch }}-${{ env.PLATFORM }}-
 
-  - name: Cache Toolchain and ccache
-    uses: actions/cache@v4
-    id: cache-toolchain
-    with:
-      path: |
-        ${{ env.WORK_DIR }}/staging_dir/toolchain-*
-        ${{ env.WORK_DIR }}/staging_dir/host
-        ${{ env.WORK_DIR }}/.ccache
-      key: toolchain-${{ runner.arch }}-${{ env.PLATFORM }}-${{ env.REPO_BRANCH }}-${{ hashFiles(env.CONFIG_FILE) }}
-      restore-keys: |
-        toolchain-${{ runner.arch }}-${{ env.PLATFORM }}-${{ env.REPO_BRANCH }}-
-        toolchain-${{ runner.arch }}-${{ env.PLATFORM }}-
+      - name: Cache Status
+        run: |
+          echo "Toolchain Cache Hit: ${{ steps.cache-toolchain.outputs.cache-hit }}"
 
-  - name: Cache Status
-    run: |
-      echo "Toolchain Cache Hit: ${{ steps.cache-toolchain.outputs.cache-hit }}"
+      - name: Clone ImmortalWrt
+        run: |
+          git clone \
+            --depth=1 \
+            --single-branch \
+            --branch ${REPO_BRANCH} \
+            ${REPO_URL} \
+            ${WORK_DIR}
 
-  - name: Clone ImmortalWrt
-    run: |
-      git clone \
-        --depth=1 \
-        --single-branch \
-        --branch ${REPO_BRANCH} \
-        ${REPO_URL} \
-        ${WORK_DIR}
+          test -f ${WORK_DIR}/scripts/feeds
 
-      test -f ${WORK_DIR}/scripts/feeds
+      - name: Load custom feeds
+        run: |
+          cp -f ${FEEDS_CONF} ${WORK_DIR}/feeds.conf.default
 
-  - name: Load custom feeds
-    run: |
-      cp -f ${FEEDS_CONF} ${WORK_DIR}/feeds.conf.default
+          chmod +x ${DIY_P1_SH}
 
-      chmod +x ${DIY_P1_SH}
+          cd ${WORK_DIR}
 
-      cd ${WORK_DIR}
+          ${GITHUB_WORKSPACE}/${DIY_P1_SH}
 
-      ${GITHUB_WORKSPACE}/${DIY_P1_SH}
+      - name: Update feeds
+        run: |
+          cd ${WORK_DIR}
 
-  - name: Update feeds
-    run: |
-      cd ${WORK_DIR}
+          chmod +x scripts/feeds
 
-      chmod +x scripts/feeds
+          ./scripts/feeds update -a -f
 
-      ./scripts/feeds update -a -f
+          ./scripts/feeds install -a
 
-      ./scripts/feeds install -a
+      - name: Load custom configuration
+        run: |
+          cp -f ${CONFIG_FILE} ${WORK_DIR}/.config
 
-  - name: Load custom configuration
-    run: |
-      cp -f ${CONFIG_FILE} ${WORK_DIR}/.config
+          chmod +x ${DIY_P2_SH}
 
-      chmod +x ${DIY_P2_SH}
+          cd ${WORK_DIR}
 
-      cd ${WORK_DIR}
+          ${GITHUB_WORKSPACE}/${DIY_P2_SH}
 
-      ${GITHUB_WORKSPACE}/${DIY_P2_SH}
+      - name: Configure ccache
+        run: |
+          mkdir -p ${WORK_DIR}/.ccache
 
-  - name: Configure ccache
-    run: |
-      mkdir -p ${WORK_DIR}/.ccache
+          ccache -M ${CCACHE_SIZE}
 
-      ccache -M ${CCACHE_SIZE}
+          ccache -s
 
-      ccache -s
+      - name: Record build start time
+        run: |
+          echo "BUILD_START=$(date +%s)" >> $GITHUB_ENV
 
-  - name: Record build start time
-    run: |
-      echo "BUILD_START=$(date +%s)" >> $GITHUB_ENV
+      - name: Download packages
+        id: package
+        run: |
+          cd ${WORK_DIR}
 
-  - name: Download packages
-    id: package
-    run: |
-      cd ${WORK_DIR}
+          make defconfig
 
-      make defconfig
+          for i in {1..3}; do
+            echo "Download attempt ${i}"
 
-      for i in {1..3}
-      do
-        echo "Download attempt ${i}"
+            if make download -j$(nproc); then
+              break
+            fi
 
-        if make download -j$(nproc)
-        then
-          break
-        fi
+            sleep 10
+          done
 
-        sleep 10
-      done
+          echo "status=success" >> $GITHUB_OUTPUT
 
-      echo "status=success" >> $GITHUB_OUTPUT
+      - name: Show disk before build
+        run: |
+          df -hT
 
-  - name: Show disk before build
-    run: |
-      df -hT
+      - name: Build firmware
+        id: build
+        run: |
+          cd ${WORK_DIR}
 
-  - name: Build firmware
-    id: build
-    run: |
-      cd ${WORK_DIR}
+          export PATH="/usr/lib/ccache:$PATH"
 
-      export PATH="/usr/lib/ccache:$PATH"
+          if make -j$(nproc) V=sc; then
+            echo "status=success" >> $GITHUB_OUTPUT
+          else
+            echo ""
+            echo "=========================="
+            echo "BUILD FAILED"
+            echo "=========================="
 
-      if make -j$(nproc) V=sc
-      then
-        echo "status=success" >> $GITHUB_OUTPUT
-      else
-        echo ""
-        echo "=========================="
-        echo "BUILD FAILED"
-        echo "=========================="
+            make -j1 V=s 2>&1 | tail -300
 
-        make -j1 V=s 2>&1 | tail -300
+            echo "status=failed" >> $GITHUB_OUTPUT
 
-        echo "status=failed" >> $GITHUB_OUTPUT
+            exit 1
+          fi
 
-        exit 1
-      fi
+      - name: Build Statistics
+        if: steps.build.outputs.status == 'success'
+        run: |
+          END=$(date +%s)
 
-  - name: Build Statistics
-    if: steps.build.outputs.status == 'success'
-    run: |
-      END=$(date +%s)
+          COST=$((END-BUILD_START))
 
-      COST=$((END-BUILD_START))
+          echo "Build Time: $((COST/60)) minutes"
 
-      echo "Build Time: $((COST/60)) minutes"
+          ccache -s
 
-      ccache -s
+      - name: Check build result
+        if: steps.build.outputs.status == 'success'
+        run: |
+          ls -lh ${WORK_DIR}/bin/targets/*/*/
 
-  - name: Check build result
-    if: steps.build.outputs.status == 'success'
-    run: |
-      ls -lh ${WORK_DIR}/bin/targets/*/*/
+      - name: Organize files
+        id: organize
+        if: steps.build.outputs.status == 'success'
+        run: |
+          cd ${WORK_DIR}/bin/targets/*/*
 
-  - name: Organize files
-    id: organize
-    if: steps.build.outputs.status == 'success'
-    run: |
-      cd ${WORK_DIR}/bin/targets/*/*
+          rm -rf packages
 
-      rm -rf packages
+          echo "FIRMWARE=$PWD" >> $GITHUB_ENV
 
-      echo "FIRMWARE=$PWD" >> $GITHUB_ENV
+          echo "status=success" >> $GITHUB_OUTPUT
 
-      echo "status=success" >> $GITHUB_OUTPUT
+      - name: Upload firmware artifact
+        uses: actions/upload-artifact@v4
+        if: steps.organize.outputs.status == 'success'
+        with:
+          name: ImmortalWrt-R5S-${{ github.run_number }}
+          path: ${{ env.FIRMWARE }}
+          retention-days: 5
 
-  - name: Upload firmware artifact
-    uses: actions/upload-artifact@v4
-    if: steps.organize.outputs.status == 'success'
-    with:
-      name: ImmortalWrt-R5S-${{ github.run_number }}
-      path: ${{ env.FIRMWARE }}
-      retention-days: 5
+      - name: Generate release tag
+        id: tag
+        if: steps.organize.outputs.status == 'success'
+        run: |
+          echo "release_tag=latest-r5s" >> $GITHUB_OUTPUT
+          echo "status=success" >> $GITHUB_OUTPUT
 
-  - name: Generate release tag
-    id: tag
-    if: steps.organize.outputs.status == 'success'
-    run: |
-      echo "release_tag=latest-r5s" >> $GITHUB_OUTPUT
-      echo "status=success" >> $GITHUB_OUTPUT
+      - name: Upload Release
+        uses: ncipollo/release-action@v1
+        if: steps.tag.outputs.status == 'success'
+        with:
+          tag: latest-r5s
+          name: Latest NanoPi R5S Build
+          allowUpdates: true
+          removeArtifacts: true
+          replacesArtifacts: true
+          artifacts: ${{ env.FIRMWARE }}/*
+          token: ${{ secrets.GITHUB_TOKEN }}
+          body: |
+            ImmortalWrt Auto Build
 
-  - name: Upload Release
-    uses: ncipollo/release-action@v1
-    if: steps.tag.outputs.status == 'success'
-    with:
-      tag: latest-r5s
-      name: Latest NanoPi R5S Build
+            Device: NanoPi R5S
+            Branch: master
+            Platform: Rockchip RK3568
 
-      allowUpdates: true
-      removeArtifacts: true
-      replacesArtifacts: true
+      - name: Delete old workflow runs
+        uses: GitRML/delete-workflow-runs@main
+        with:
+          retain_days: 10
+          keep_minimum_runs: 10
+          token: ${{ secrets.GITHUB_TOKEN }}
 
-      artifacts: ${{ env.FIRMWARE }}/*
+      - name: Cleanup
+        if: always()
+        run: |
+          cd ${WORK_DIR}
 
-      token: ${{ secrets.GITHUB_TOKEN }}
+          rm -rf dl/
 
-      body: |
-        ImmortalWrt Auto Build
-
-        Device: NanoPi R5S
-        Branch: master
-        Platform: Rockchip RK3568
-
-  - name: Delete old workflow runs
-    uses: GitRML/delete-workflow-runs@main
-    with:
-      retain_days: 10
-      keep_minimum_runs: 10
-      token: ${{ secrets.GITHUB_TOKEN }}
-
-  - name: Cleanup
-    if: always()
-    run: |
-      cd ${WORK_DIR}
-
-      rm -rf dl/
-
-      df -hT
-```
+          df -hT
