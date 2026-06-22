@@ -17,9 +17,7 @@ env:
   DIY_P2_SH: config/diy-part2.sh
 
   WORK_DIR: immortalwrt
-
   PLATFORM: rockchip
-
   TZ: Asia/Shanghai
 
   CCACHE_SIZE: 5G
@@ -29,17 +27,15 @@ env:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
 
     permissions:
       contents: write
       actions: read
 
     steps:
-      - name: Checkout repository
+      - name: Checkout Repository
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
 
       - name: Free Disk Space
         uses: jlumbroso/free-disk-space@main
@@ -52,7 +48,7 @@ jobs:
           docker-images: true
           swap-storage: true
 
-      - name: Install dependencies
+      - name: Install Dependencies
         run: |
           sudo apt update
 
@@ -76,30 +72,10 @@ jobs:
 
           sudo timedatectl set-timezone "${TZ}"
 
-      - name: Show environment
+      - name: Show Environment
         run: |
-          echo "Architecture:"
-          uname -m
-
-          echo "Disk:"
+          uname -a
           df -hT
-
-      - name: Cache Toolchain and ccache
-        uses: actions/cache@v4
-        id: cache-toolchain
-        with:
-          path: |
-            ${{ env.WORK_DIR }}/staging_dir/toolchain-*
-            ${{ env.WORK_DIR }}/staging_dir/host
-            ${{ env.WORK_DIR }}/.ccache
-          key: toolchain-${{ runner.arch }}-${{ env.PLATFORM }}-${{ env.REPO_BRANCH }}-${{ hashFiles(env.CONFIG_FILE) }}
-          restore-keys: |
-            toolchain-${{ runner.arch }}-${{ env.PLATFORM }}-${{ env.REPO_BRANCH }}-
-            toolchain-${{ runner.arch }}-${{ env.PLATFORM }}-
-
-      - name: Cache Status
-        run: |
-          echo "Toolchain Cache Hit: ${{ steps.cache-toolchain.outputs.cache-hit }}"
 
       - name: Clone ImmortalWrt
         run: |
@@ -112,7 +88,19 @@ jobs:
 
           test -f ${WORK_DIR}/scripts/feeds
 
-      - name: Load custom feeds
+      - name: Restore dl Cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.WORK_DIR }}/dl
+          key: dl-${{ env.REPO_BRANCH }}
+
+      - name: Restore ccache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.WORK_DIR }}/.ccache
+          key: ccache-${{ env.REPO_BRANCH }}
+
+      - name: Load Custom Feeds
         run: |
           cp -f ${FEEDS_CONF} ${WORK_DIR}/feeds.conf.default
 
@@ -122,17 +110,14 @@ jobs:
 
           ${GITHUB_WORKSPACE}/${DIY_P1_SH}
 
-      - name: Update feeds
+      - name: Update Feeds
         run: |
           cd ${WORK_DIR}
 
-          chmod +x scripts/feeds
-
           ./scripts/feeds update -a -f
-
           ./scripts/feeds install -a
 
-      - name: Load custom configuration
+      - name: Load Configuration
         run: |
           cp -f ${CONFIG_FILE} ${WORK_DIR}/.config
 
@@ -150,54 +135,34 @@ jobs:
 
           ccache -s
 
-      - name: Record build start time
+      - name: Record Build Start
         run: |
           echo "BUILD_START=$(date +%s)" >> $GITHUB_ENV
 
-      - name: Download packages
-        id: package
+      - name: Download Packages
         run: |
           cd ${WORK_DIR}
 
           make defconfig
 
-          for i in {1..3}; do
-            echo "Download attempt ${i}"
+          make download -j$(nproc) || true
+          make download -j$(nproc) || true
+          make download -j$(nproc)
 
-            if make download -j$(nproc); then
-              break
-            fi
-
-            sleep 10
-          done
-
-          echo "status=success" >> $GITHUB_OUTPUT
-
-      - name: Show disk before build
+      - name: Show Disk Before Build
         run: |
           df -hT
 
-      - name: Build firmware
+      - name: Build Firmware
         id: build
         run: |
           cd ${WORK_DIR}
 
           export PATH="/usr/lib/ccache:$PATH"
 
-          if make -j$(nproc) V=sc; then
-            echo "status=success" >> $GITHUB_OUTPUT
-          else
-            echo ""
-            echo "=========================="
-            echo "BUILD FAILED"
-            echo "=========================="
+          make -j$(nproc) V=sc
 
-            make -j1 V=s 2>&1 | tail -300
-
-            echo "status=failed" >> $GITHUB_OUTPUT
-
-            exit 1
-          fi
+          echo "status=success" >> $GITHUB_OUTPUT
 
       - name: Build Statistics
         if: steps.build.outputs.status == 'success'
@@ -206,16 +171,11 @@ jobs:
 
           COST=$((END-BUILD_START))
 
-          echo "Build Time: $((COST/60)) minutes"
+          echo "Build Time: $((COST/60)) Minutes"
 
           ccache -s
 
-      - name: Check build result
-        if: steps.build.outputs.status == 'success'
-        run: |
-          ls -lh ${WORK_DIR}/bin/targets/*/*/
-
-      - name: Organize files
+      - name: Organize Files
         id: organize
         if: steps.build.outputs.status == 'success'
         run: |
@@ -227,7 +187,7 @@ jobs:
 
           echo "status=success" >> $GITHUB_OUTPUT
 
-      - name: Upload firmware artifact
+      - name: Upload Artifact
         uses: actions/upload-artifact@v4
         if: steps.organize.outputs.status == 'success'
         with:
@@ -235,16 +195,15 @@ jobs:
           path: ${{ env.FIRMWARE }}
           retention-days: 5
 
-      - name: Generate release tag
+      - name: Generate Release Tag
         id: tag
         if: steps.organize.outputs.status == 'success'
         run: |
           echo "release_tag=latest-r5s" >> $GITHUB_OUTPUT
-          echo "status=success" >> $GITHUB_OUTPUT
 
       - name: Upload Release
         uses: ncipollo/release-action@v1
-        if: steps.tag.outputs.status == 'success'
+        if: steps.organize.outputs.status == 'success'
         with:
           tag: latest-r5s
           name: Latest NanoPi R5S Build
@@ -258,9 +217,9 @@ jobs:
 
             Device: NanoPi R5S
             Branch: master
-            Platform: Rockchip RK3568
+            Build Time: ${{ github.run_number }}
 
-      - name: Delete old workflow runs
+      - name: Delete Old Workflow Runs
         uses: GitRML/delete-workflow-runs@main
         with:
           retain_days: 10
@@ -272,6 +231,6 @@ jobs:
         run: |
           cd ${WORK_DIR}
 
-          rm -rf dl/
+          rm -rf tmp
 
           df -hT
