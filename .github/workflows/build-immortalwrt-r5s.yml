@@ -23,7 +23,6 @@ env:
 jobs:
   build:
     runs-on: ubuntu-22.04-arm
-    # ✅ 修复1：添加权限，允许创建 Release
     permissions:
       contents: write
       actions: read
@@ -83,15 +82,35 @@ jobs:
           toolchain-arm-${{ env.PLATFORM }}-${{ env.REPO_BRANCH }}-
           toolchain-arm-${{ env.PLATFORM }}-
 
+    # ===== 修复点1：强化源码克隆 =====
     - name: Clone ImmortalWRT source
       run: |
+        # 如果 .git 缓存存在，尝试增量更新
         if [ -d "${WORK_DIR}/.git" ]; then
+          echo "=== Git cache found, updating existing repo ==="
           cd ${WORK_DIR}
           git fetch origin ${REPO_BRANCH}
           git checkout ${REPO_BRANCH}
+          git pull origin ${REPO_BRANCH}
         else
+          # 如果目录存在但不完整，删除重来
+          if [ -d "${WORK_DIR}" ]; then
+            echo "=== Removing incomplete WORK_DIR ==="
+            rm -rf ${WORK_DIR}
+          fi
+          echo "=== Cloning ImmortalWRT source ==="
           git clone --depth=1 --branch ${REPO_BRANCH} --single-branch ${REPO_URL} ${WORK_DIR}
         fi
+        
+        # 验证关键文件存在
+        if [ ! -f "${WORK_DIR}/scripts/feeds" ]; then
+          echo "=== ERROR: scripts/feeds not found! ==="
+          ls -la ${WORK_DIR}/scripts/ 2>/dev/null || echo "scripts/ directory missing"
+          exit 1
+        fi
+        
+        echo "=== Clone successful, scripts/feeds exists. ==="
+    # ===== 修复点1结束 =====
 
     - name: Copy custom feeds and run diy-part1
       run: |
@@ -100,11 +119,14 @@ jobs:
         cd ${WORK_DIR}
         ${GITHUB_WORKSPACE}/${DIY_P1_SH}
 
+    # ===== 修复点2：确保 feeds 脚本可执行 =====
     - name: Update feeds
       run: |
         cd ${WORK_DIR}
+        chmod +x scripts/feeds
         ./scripts/feeds update -a -f
         ./scripts/feeds install -a
+    # ===== 修复点2结束 =====
 
     - name: Load custom configuration and run diy-part2
       run: |
@@ -194,7 +216,6 @@ jobs:
         echo "release_tag=R5S-$(date +"%Y.%m.%d-%H%M")" >> $GITHUB_OUTPUT
         echo "status=success" >> $GITHUB_OUTPUT
 
-    # ✅ 修复2：替换为 ncipollo/release-action，更稳定
     - name: Upload firmware to release
       uses: ncipollo/release-action@v1
       if: steps.tag.outputs.status == 'success' && !cancelled()
