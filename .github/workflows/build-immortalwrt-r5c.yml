@@ -4,147 +4,233 @@ on:
   repository_dispatch:
   workflow_dispatch:
   schedule:
-    - cron: 0 21 * * *
+    - cron: '0 21 * * *'
 
 env:
   REPO_URL: https://github.com/immortalwrt/immortalwrt.git
-  REPO_BRANCH: openwrt-25.12
+  REPO_BRANCH: master
+
   FEEDS_CONF: config/immortalwrt.feeds.conf.default
   CONFIG_FILE: config/r5c/immortalwrt.config
+
   DIY_P1_SH: config/diy-part1.sh
   DIY_P2_SH: config/diy-part2.sh
+
+  WORK_DIR: immortalwrt
+  PLATFORM: rockchip
+  TZ: Asia/Shanghai
+
+  CCACHE_SIZE: 5G
+
   UPLOAD_FIRMWARE: true
   UPLOAD_RELEASE: true
-  TZ: Asia/Shanghai
-  WORK_DIR: immortalwrt
-  PLATFORM: ramips
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
+    permissions:
+      contents: write
+      actions: read
+
     steps:
-    - name: Checkout code
-      uses: actions/checkout@main
+      - name: Checkout Repository
+        uses: actions/checkout@v4
 
-    - name: Free Disk Space (Ubuntu)
-      uses: jlumbroso/free-disk-space@main
-      with:
-        # this might remove tools that are actually needed,
-        # if set to "true" but frees about 6 GB
-        tool-cache: false
-        
-        # all of these default to true, but feel free to set to
-        # "false" if necessary for your workflow
-        android: true
-        dotnet: true
-        haskell: true
-        large-packages: true
-        docker-images: true
-        swap-storage: true
+      - name: Free Disk Space
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
 
-    - name: Set up dependencies
-      run: |
-        sudo apt update
-        sudo apt install -y ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential bzip2 ccache clang cmake cpio curl device-tree-compiler ecj fastjar flex gawk gettext gcc-multilib g++-multilib git gnutls-dev gperf haveged help2man intltool lib32gcc-s1 libc6-dev-i386 libelf-dev libglib2.0-dev libgmp3-dev libltdl-dev libmpc-dev libmpfr-dev libncurses-dev libpython3-dev libreadline-dev libssl-dev libtool libyaml-dev libz-dev lld llvm lrzsz mkisofs msmtp nano ninja-build p7zip p7zip-full patch pkgconf python3 python3-pip python3-ply python3-docutils python3-pyelftools qemu-utils re2c rsync scons squashfs-tools subversion swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev zstd
-        sudo apt -y autoremove --purge
-        sudo apt clean
-        sudo timedatectl set-timezone "${TZ}"
-        echo "status=success" >> ${GITHUB_OUTPUT}
-        
-    - name: Check space usage
-      if: (!cancelled())
-      run: df -hT
-      
-    - name: Clone ImmortalWRT source
-      run: |
-        git clone --depth=1 --branch ${REPO_BRANCH} --single-branch ${REPO_URL} ${WORK_DIR}
+      - name: Install Dependencies
+        run: |
+          sudo apt update
 
-    - name: Copy custom feeds
-      run: |
-        cp -f ${FEEDS_CONF} ${WORK_DIR}/feeds.conf.default  # 将自定义的 feeds.conf 复制到源码目录中
-        chmod +x ${DIY_P1_SH}
-        cd ${WORK_DIR}
-        ${GITHUB_WORKSPACE}/${DIY_P1_SH}
+          sudo apt install -y \
+          ack antlr3 asciidoc autoconf automake autopoint \
+          binutils bison build-essential bzip2 \
+          ccache clang cmake cpio curl \
+          device-tree-compiler ecj fastjar flex gawk gettext \
+          git gnutls-dev gperf haveged help2man intltool \
+          libelf-dev libglib2.0-dev libgmp3-dev libltdl-dev \
+          libmpc-dev libmpfr-dev libncurses-dev \
+          libpython3-dev libreadline-dev libssl-dev \
+          libtool libyaml-dev libz-dev \
+          lld llvm lrzsz mkisofs msmtp nano ninja-build \
+          p7zip p7zip-full patch pkgconf \
+          python3 python3-pip python3-ply python3-docutils \
+          python3-pyelftools qemu-utils re2c rsync scons \
+          squashfs-tools subversion swig texinfo uglifyjs \
+          upx-ucl unzip vim wget xmlto xxd \
+          zlib1g-dev zstd
 
-    - name: Use cachewrtbuild action
-      uses: klever1988/cachewrtbuild@main
-      with:
-        ccache: 'true'  # 启用 ccache，加速构建
-        mixkey: ${{ env.PLATFORM }}  # 设置目标平台为 R5S 使用的 ramips
-        prefix: ${{ env.WORK_DIR }}  # 使用的源码前缀
-        
-    - name: Set up specific configuration
-      run: |
-        cd ${WORK_DIR}
-        git checkout
-        ./scripts/feeds update -a
-        ./scripts/feeds install -a
+          sudo timedatectl set-timezone "${TZ}"
 
-    - name: Load custom configuration
-      run: |
-        cp -f ${CONFIG_FILE} ${WORK_DIR}/.config  # 将自定义的 .config 复制到源码目录中
-        chmod +x ${DIY_P2_SH}
-        cd ${WORK_DIR}
-        ${GITHUB_WORKSPACE}/${DIY_P2_SH}
+      - name: Show Environment
+        run: |
+          uname -a
+          df -hT
 
-    - name: Download package
-      id: package
-      run: |
-        cd ${WORK_DIR}
-        make defconfig
-        make download -j$(nproc)
-        echo "status=success" >> $GITHUB_OUTPUT
+      - name: Clone ImmortalWrt
+        run: |
+          git clone \
+            --depth=1 \
+            --single-branch \
+            --branch ${REPO_BRANCH} \
+            ${REPO_URL} \
+            ${WORK_DIR}
 
-    - name: Check space usage
-      if: steps.package.outputs.status == 'success' && !cancelled()
-      run: df -hT
+          test -f ${WORK_DIR}/scripts/feeds
 
-    - name: Build firmware
-      id: build
-      run: |
-        cd ${WORK_DIR}
-        make -j$(nproc) V=s
-        echo "status=success" >> $GITHUB_OUTPUT
+      - name: Restore dl Cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.WORK_DIR }}/dl
+          key: dl-${{ env.REPO_BRANCH }}
 
-    - name: Organize files
-      id: organize
-      if: steps.build.outputs.status == 'success' && !cancelled()
-      run: |
-        cd ${WORK_DIR}/bin/targets/*/*
-        rm -rf packages
-        echo "FIRMWARE=$PWD" >> $GITHUB_ENV
-        echo "status=success" >> $GITHUB_OUTPUT
-          
-    - name: Upload firmware directory
-      uses: actions/upload-artifact@main
-      if: steps.organize.outputs.status == 'success' && !cancelled()
-      with:
-        name: OpenWrt_firmware${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
-        path: ${{ env.FIRMWARE }}
+      - name: Restore ccache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.WORK_DIR }}/.ccache
+          key: ccache-${{ env.REPO_BRANCH }}
 
-    - name: Generate release tag
-      id: tag
-      if: steps.organize.outputs.status == 'success' && env.UPLOAD_RELEASE == 'true' && !cancelled()
-      run: |
-        touch release.txt
-        echo "release_tag=$(date +"%Y.%m.%d-%H%M")" >> $GITHUB_OUTPUT
-        echo "status=success" >> $GITHUB_OUTPUT
+      - name: Load Custom Feeds
+        run: |
+          cp -f ${FEEDS_CONF} ${WORK_DIR}/feeds.conf.default
 
-    - name: Upload firmware to release
-      uses: softprops/action-gh-release@v1
-      if: steps.tag.outputs.status == 'success' && !cancelled()
-      env:
-        GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
-      with:
-        tag_name: ${{ steps.tag.outputs.release_tag }}
-        body_path: release.txt
-        files: ${{ env.FIRMWARE }}/*
+          chmod +x ${DIY_P1_SH}
 
-    - name: Delete workflow runs
-      uses: GitRML/delete-workflow-runs@main
-      if: steps.tag.outputs.status == 'success' && !cancelled()
-      with:
-        retain_days: 10
-        keep_minimum_runs: 10
-        token: ${{ secrets.GH_TOKEN }}
+          cd ${WORK_DIR}
+
+          ${GITHUB_WORKSPACE}/${DIY_P1_SH}
+
+      - name: Update Feeds
+        run: |
+          cd ${WORK_DIR}
+
+          ./scripts/feeds update -a -f
+          ./scripts/feeds install -a
+
+      - name: Load Configuration
+        run: |
+          cp -f ${CONFIG_FILE} ${WORK_DIR}/.config
+
+          chmod +x ${DIY_P2_SH}
+
+          cd ${WORK_DIR}
+
+          ${GITHUB_WORKSPACE}/${DIY_P2_SH}
+
+      - name: Configure ccache
+        run: |
+          mkdir -p ${WORK_DIR}/.ccache
+
+          ccache -M ${CCACHE_SIZE}
+
+          ccache -s
+
+      - name: Record Build Start
+        run: |
+          echo "BUILD_START=$(date +%s)" >> $GITHUB_ENV
+
+      - name: Download Packages
+        run: |
+          cd ${WORK_DIR}
+
+          make defconfig
+
+          make download -j$(nproc) || true
+          make download -j$(nproc) || true
+          make download -j$(nproc)
+
+      - name: Show Disk Before Build
+        run: |
+          df -hT
+
+      - name: Build Firmware
+        id: build
+        run: |
+          cd ${WORK_DIR}
+
+          export PATH="/usr/lib/ccache:$PATH"
+
+          make -j$(nproc)
+
+          echo "status=success" >> $GITHUB_OUTPUT
+
+      - name: Build Statistics
+        if: steps.build.outputs.status == 'success'
+        run: |
+          END=$(date +%s)
+
+          COST=$((END-BUILD_START))
+
+          echo "Build Time: $((COST/60)) Minutes"
+
+          ccache -s
+
+      - name: Organize Files
+        id: organize
+        if: steps.build.outputs.status == 'success'
+        run: |
+          cd ${WORK_DIR}/bin/targets/*/*
+
+          rm -rf packages
+
+          echo "FIRMWARE=$PWD" >> $GITHUB_ENV
+
+          echo "status=success" >> $GITHUB_OUTPUT
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        if: steps.organize.outputs.status == 'success'
+        with:
+          name: ImmortalWrt-R5C-${{ github.run_number }}
+          path: ${{ env.FIRMWARE }}
+          retention-days: 5
+
+      - name: Generate Release Tag
+        id: tag
+        if: steps.organize.outputs.status == 'success'
+        run: |
+          echo "release_tag=latest-r5c" >> $GITHUB_OUTPUT
+
+      - name: Upload Release
+        uses: ncipollo/release-action@v1
+        if: steps.organize.outputs.status == 'success'
+        with:
+          tag: latest-r5c
+          name: Latest NanoPi R5C Build
+          allowUpdates: true
+          removeArtifacts: true
+          replacesArtifacts: true
+          artifacts: ${{ env.FIRMWARE }}/*
+          token: ${{ secrets.GITHUB_TOKEN }}
+          body: |
+            ImmortalWrt Auto Build
+
+            Device: NanoPi R5C
+            Branch: master
+            Build Time: ${{ github.run_number }}
+
+      - name: Delete Old Workflow Runs
+        uses: GitRML/delete-workflow-runs@main
+        with:
+          retain_days: 10
+          keep_minimum_runs: 10
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Cleanup
+        if: always()
+        run: |
+          cd ${WORK_DIR}
+
+          rm -rf tmp
+
+          df -hT
