@@ -224,7 +224,7 @@ jobs:
         with:
           retain_days: 10
           keep_minimum_runs: 10
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.GH_TOKEN }}
 
       - name: Cleanup
         if: always()
