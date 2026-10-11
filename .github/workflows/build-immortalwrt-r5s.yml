@@ -20,7 +20,13 @@ env:
   PLATFORM: rockchip
   TZ: Asia/Shanghai
 
-  CCACHE_SIZE: 5G
+  CCACHE_SIZE: 10G
+  CCACHE_MAXFILES: 0
+  CCACHE_SLOPPINESS: file_macro,time_macros,include_file_ctime,include_file_mtime
+  CCACHE_DIR: ${{ github.workspace }}/immortalwrt/.ccache
+  CCACHE_BASEDIR: ${{ github.workspace }}/immortalwrt
+
+  BUILD_JOBS: 8
 
   UPLOAD_FIRMWARE: true
   UPLOAD_RELEASE: true
@@ -34,10 +40,10 @@ jobs:
       actions: read
 
     steps:
-      - name: Checkout Repository
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Free Disk Space
+      - name: Free disk space
         uses: jlumbroso/free-disk-space@main
         with:
           preinstalled-runtimes: true
@@ -48,146 +54,121 @@ jobs:
           docker-images: true
           swap-storage: true
 
-      - name: Install Dependencies
+      - name: Install dependencies
         run: |
-          sudo apt update
-
-          sudo apt install -y \
-          ack antlr3 asciidoc autoconf automake autopoint \
-          binutils bison build-essential bzip2 \
-          ccache clang cmake cpio curl \
-          device-tree-compiler ecj fastjar flex gawk gettext \
-          git gnutls-dev gperf haveged help2man intltool \
-          libelf-dev libglib2.0-dev libgmp3-dev libltdl-dev \
-          libmpc-dev libmpfr-dev libncurses-dev \
-          libpython3-dev libreadline-dev libssl-dev \
-          libtool libyaml-dev libz-dev \
-          lld llvm lrzsz mkisofs msmtp nano ninja-build \
-          p7zip p7zip-full patch pkgconf \
-          python3 python3-pip python3-ply python3-docutils \
-          python3-pyelftools qemu-utils re2c rsync scons \
-          squashfs-tools subversion swig texinfo uglifyjs \
-          upx-ucl unzip vim wget xmlto xxd \
-          zlib1g-dev zstd
-
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            ack antlr3 asciidoc autoconf automake autopoint \
+            binutils bison build-essential bzip2 \
+            ccache clang cmake cpio curl \
+            device-tree-compiler ecj fastjar flex gawk gettext \
+            git gnutls-dev gperf haveged help2man intltool \
+            libelf-dev libglib2.0-dev libgmp3-dev libltdl-dev \
+            libmpc-dev libmpfr-dev libncurses-dev \
+            libpython3-dev libreadline-dev libssl-dev \
+            libtool libyaml-dev libz-dev \
+            lld llvm lrzsz mkisofs msmtp nano ninja-build \
+            p7zip p7zip-full patch pkgconf \
+            python3 python3-pip python3-ply python3-docutils \
+            python3-pyelftools qemu-utils re2c rsync scons \
+            squashfs-tools subversion swig texinfo uglifyjs \
+            upx-ucl unzip vim wget xmlto xxd \
+            zlib1g-dev zstd
           sudo timedatectl set-timezone "${TZ}"
 
-      - name: Show Environment
+      - name: Show environment
         run: |
           uname -a
           df -hT
 
       - name: Clone ImmortalWrt
         run: |
-          git clone \
-            --depth=1 \
-            --single-branch \
-            --branch ${REPO_BRANCH} \
-            ${REPO_URL} \
-            ${WORK_DIR}
+          git clone --depth=1 --single-branch --branch "${REPO_BRANCH}" "${REPO_URL}" "${WORK_DIR}"
+          test -f "${WORK_DIR}/scripts/feeds"
 
-          test -f ${WORK_DIR}/scripts/feeds
-
-      - name: Restore dl Cache
+      - name: Restore caches
         uses: actions/cache@v4
         with:
-          path: ${{ env.WORK_DIR }}/dl
-          key: dl-${{ env.REPO_BRANCH }}
+          path: |
+            ${{ env.WORK_DIR }}/dl
+            ${{ env.WORK_DIR }}/.ccache
+            ${{ env.WORK_DIR }}/build_dir
+            ${{ env.WORK_DIR }}/staging_dir
+          key: ${{ runner.os }}-${{ env.REPO_BRANCH }}-${{ hashFiles('config/**', '.github/workflows/build-immortalwrt-r5s.yml') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ env.REPO_BRANCH }}-
+            ${{ runner.os }}-
 
-      - name: Restore ccache
-        uses: actions/cache@v4
-        with:
-          path: ${{ env.WORK_DIR }}/.ccache
-          key: ccache-${{ env.REPO_BRANCH }}
-
-      - name: Load Custom Feeds
+      - name: Load custom feeds
         run: |
-          cp -f ${FEEDS_CONF} ${WORK_DIR}/feeds.conf.default
+          cp -f "${FEEDS_CONF}" "${WORK_DIR}/feeds.conf.default"
+          chmod +x "${DIY_P1_SH}"
+          cd "${WORK_DIR}"
+          "${GITHUB_WORKSPACE}/${DIY_P1_SH}"
 
-          chmod +x ${DIY_P1_SH}
-
-          cd ${WORK_DIR}
-
-          ${GITHUB_WORKSPACE}/${DIY_P1_SH}
-
-      - name: Update Feeds
+      - name: Update feeds
         run: |
-          cd ${WORK_DIR}
-
+          cd "${WORK_DIR}"
           ./scripts/feeds update -a -f
           ./scripts/feeds install -a
 
-      - name: Load Configuration
+      - name: Load configuration
         run: |
-          cp -f ${CONFIG_FILE} ${WORK_DIR}/.config
-
-          chmod +x ${DIY_P2_SH}
-
-          cd ${WORK_DIR}
-
-          ${GITHUB_WORKSPACE}/${DIY_P2_SH}
+          cp -f "${CONFIG_FILE}" "${WORK_DIR}/.config"
+          chmod +x "${DIY_P2_SH}"
+          cd "${WORK_DIR}"
+          "${GITHUB_WORKSPACE}/${DIY_P2_SH}"
 
       - name: Configure ccache
         run: |
-          mkdir -p ${WORK_DIR}/.ccache
-
-          ccache -M ${CCACHE_SIZE}
-
+          mkdir -p "${WORK_DIR}/.ccache"
+          ccache -M "${CCACHE_SIZE}"
+          ccache -z
           ccache -s
 
-      - name: Record Build Start
-        run: |
-          echo "BUILD_START=$(date +%s)" >> $GITHUB_ENV
+      - name: Record build start
+        run: echo "BUILD_START=$(date +%s)" >> "$GITHUB_ENV"
 
-      - name: Download Packages
+      - name: Download packages
         run: |
-          cd ${WORK_DIR}
-
+          cd "${WORK_DIR}"
           make defconfig
+          make download -j"${BUILD_JOBS}" || true
+          make download -j"${BUILD_JOBS}" || true
+          make download -j"${BUILD_JOBS}"
 
-          make download -j$(nproc) || true
-          make download -j$(nproc) || true
-          make download -j$(nproc)
+      - name: Show disk before build
+        run: df -hT
 
-      - name: Show Disk Before Build
-        run: |
-          df -hT
-
-      - name: Build Firmware
+      - name: Build firmware
         id: build
         run: |
-          cd ${WORK_DIR}
-
+          cd "${WORK_DIR}"
           export PATH="/usr/lib/ccache:$PATH"
+          export CCACHE_DIR="${GITHUB_WORKSPACE}/${WORK_DIR}/.ccache"
+          export CCACHE_BASEDIR="${GITHUB_WORKSPACE}/${WORK_DIR}"
+          make -j"${BUILD_JOBS}"
 
-          make -j$(nproc)
+          echo "status=success" >> "$GITHUB_OUTPUT"
 
-          echo "status=success" >> $GITHUB_OUTPUT
-
-      - name: Build Statistics
+      - name: Build statistics
         if: steps.build.outputs.status == 'success'
         run: |
           END=$(date +%s)
-
           COST=$((END-BUILD_START))
-
           echo "Build Time: $((COST/60)) Minutes"
-
           ccache -s
 
-      - name: Organize Files
+      - name: Organize files
         id: organize
         if: steps.build.outputs.status == 'success'
         run: |
-          cd ${WORK_DIR}/bin/targets/*/*
-
+          cd "${WORK_DIR}/bin/targets"/*/*
           rm -rf packages
+          echo "FIRMWARE=$PWD" >> "$GITHUB_ENV"
+          echo "status=success" >> "$GITHUB_OUTPUT"
 
-          echo "FIRMWARE=$PWD" >> $GITHUB_ENV
-
-          echo "status=success" >> $GITHUB_OUTPUT
-
-      - name: Upload Artifact
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         if: steps.organize.outputs.status == 'success'
         with:
@@ -195,13 +176,12 @@ jobs:
           path: ${{ env.FIRMWARE }}
           retention-days: 5
 
-      - name: Generate Release Tag
+      - name: Generate release tag
         id: tag
         if: steps.organize.outputs.status == 'success'
-        run: |
-          echo "release_tag=latest-r5s" >> $GITHUB_OUTPUT
+        run: echo "release_tag=latest-r5s" >> "$GITHUB_OUTPUT"
 
-      - name: Upload Release
+      - name: Upload release
         uses: ncipollo/release-action@v1
         if: steps.organize.outputs.status == 'success'
         with:
@@ -219,7 +199,7 @@ jobs:
             Branch: master
             Build Time: ${{ github.run_number }}
 
-      - name: Delete Old Workflow Runs
+      - name: Delete old workflow runs
         uses: GitRML/delete-workflow-runs@main
         with:
           retain_days: 10
@@ -229,8 +209,6 @@ jobs:
       - name: Cleanup
         if: always()
         run: |
-          cd ${WORK_DIR}
-
+          cd "${WORK_DIR}"
           rm -rf tmp
-
           df -hT
