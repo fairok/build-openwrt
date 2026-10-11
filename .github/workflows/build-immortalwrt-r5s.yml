@@ -20,13 +20,19 @@ env:
   PLATFORM: rockchip
   TZ: Asia/Shanghai
 
-  CCACHE_SIZE: 10G
+  # Build optimization
+  CCACHE_SIZE: 12G
   CCACHE_MAXFILES: 0
   CCACHE_SLOPPINESS: file_macro,time_macros,include_file_ctime,include_file_mtime
   CCACHE_DIR: ${{ github.workspace }}/immortalwrt/.ccache
   CCACHE_BASEDIR: ${{ github.workspace }}/immortalwrt
+  CCACHE_COMPRESS: 1
+  CCACHE_COMPRESSLEVEL: 6
 
-  BUILD_JOBS: 8
+  # Parallel jobs - using max available
+  BUILD_JOBS: $(nproc)
+  DOWNLOAD_JOBS: 16
+  FEEDS_UPDATE_JOBS: 4
 
   UPLOAD_FIRMWARE: true
   UPLOAD_RELEASE: true
@@ -80,6 +86,7 @@ jobs:
         run: |
           uname -a
           df -hT
+          nproc
 
       - name: Clone ImmortalWrt
         run: |
@@ -110,7 +117,7 @@ jobs:
         run: |
           cd "${WORK_DIR}"
           ./scripts/feeds update -a -f
-          ./scripts/feeds install -a
+          ./scripts/feeds install -a -p rockchip
 
       - name: Load configuration
         run: |
@@ -119,26 +126,28 @@ jobs:
           cd "${WORK_DIR}"
           "${GITHUB_WORKSPACE}/${DIY_P2_SH}"
 
-      - name: Configure ccache
+      - name: Configure ccache & environment
         run: |
           mkdir -p "${WORK_DIR}/.ccache"
           ccache -M "${CCACHE_SIZE}"
           ccache -z
-          ccache -s
+          echo "Build jobs: $(nproc)"
+          df -hT
 
       - name: Record build start
         run: echo "BUILD_START=$(date +%s)" >> "$GITHUB_ENV"
 
-      - name: Download packages
+      - name: Make defconfig
         run: |
           cd "${WORK_DIR}"
           make defconfig
-          make download -j"${BUILD_JOBS}" || true
-          make download -j"${BUILD_JOBS}" || true
-          make download -j"${BUILD_JOBS}"
 
-      - name: Show disk before build
-        run: df -hT
+      - name: Download packages
+        run: |
+          cd "${WORK_DIR}"
+          make download -j16 || true
+          make download -j16 || true
+          make download -j16
 
       - name: Build firmware
         id: build
@@ -147,8 +156,14 @@ jobs:
           export PATH="/usr/lib/ccache:$PATH"
           export CCACHE_DIR="${GITHUB_WORKSPACE}/${WORK_DIR}/.ccache"
           export CCACHE_BASEDIR="${GITHUB_WORKSPACE}/${WORK_DIR}"
-          make -j"${BUILD_JOBS}"
-
+          export CCACHE_COMPRESS=1
+          export CCACHE_COMPRESSLEVEL=6
+          
+          NUM_JOBS=$(nproc)
+          echo "Starting build with ${NUM_JOBS} parallel jobs"
+          
+          make -j${NUM_JOBS} V=0
+          
           echo "status=success" >> "$GITHUB_OUTPUT"
 
       - name: Build statistics
@@ -156,8 +171,10 @@ jobs:
         run: |
           END=$(date +%s)
           COST=$((END-BUILD_START))
-          echo "Build Time: $((COST/60)) Minutes"
+          echo "Build Time: $((COST/60)) Minutes ($((COST%60)) Seconds)"
+          echo "---"
           ccache -s
+          df -hT
 
       - name: Organize files
         id: organize
@@ -211,4 +228,5 @@ jobs:
         run: |
           cd "${WORK_DIR}"
           rm -rf tmp
+          du -sh .ccache build_dir staging_dir 2>/dev/null || true
           df -hT
