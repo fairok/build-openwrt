@@ -24,15 +24,10 @@ env:
   CCACHE_SIZE: 12G
   CCACHE_MAXFILES: 0
   CCACHE_SLOPPINESS: file_macro,time_macros,include_file_ctime,include_file_mtime
-  CCACHE_DIR: ${{ github.workspace }}/immortalwrt/.ccache
-  CCACHE_BASEDIR: ${{ github.workspace }}/immortalwrt
   CCACHE_COMPRESS: 1
   CCACHE_COMPRESSLEVEL: 6
-
-  # Parallel jobs - using max available
-  BUILD_JOBS: $(nproc)
-  DOWNLOAD_JOBS: 16
-  FEEDS_UPDATE_JOBS: 4
+  CCACHE_DIR: ${{ github.workspace }}/immortalwrt/.ccache
+  CCACHE_BASEDIR: ${{ github.workspace }}/immortalwrt
 
   UPLOAD_FIRMWARE: true
   UPLOAD_RELEASE: true
@@ -86,7 +81,7 @@ jobs:
         run: |
           uname -a
           df -hT
-          nproc
+          echo "CPU cores: $(nproc)"
 
       - name: Clone ImmortalWrt
         run: |
@@ -126,28 +121,27 @@ jobs:
           cd "${WORK_DIR}"
           "${GITHUB_WORKSPACE}/${DIY_P2_SH}"
 
-      - name: Configure ccache & environment
+      - name: Configure ccache
         run: |
           mkdir -p "${WORK_DIR}/.ccache"
           ccache -M "${CCACHE_SIZE}"
           ccache -z
-          echo "Build jobs: $(nproc)"
-          df -hT
+          ccache -s
 
       - name: Record build start
         run: echo "BUILD_START=$(date +%s)" >> "$GITHUB_ENV"
 
-      - name: Make defconfig
-        run: |
-          cd "${WORK_DIR}"
-          make defconfig
-
       - name: Download packages
         run: |
           cd "${WORK_DIR}"
+          make defconfig
+          # Parallel download with 16 jobs
           make download -j16 || true
           make download -j16 || true
           make download -j16
+
+      - name: Show disk before build
+        run: df -hT
 
       - name: Build firmware
         id: build
@@ -159,10 +153,12 @@ jobs:
           export CCACHE_COMPRESS=1
           export CCACHE_COMPRESSLEVEL=6
           
-          NUM_JOBS=$(nproc)
-          echo "Starting build with ${NUM_JOBS} parallel jobs"
+          # Calculate optimal parallel jobs (use all cores)
+          BUILD_JOBS=$(nproc)
+          echo "Starting build with ${BUILD_JOBS} parallel jobs"
           
-          make -j${NUM_JOBS} V=0
+          # Build with minimal output to reduce I/O overhead
+          make -j${BUILD_JOBS} V=0
           
           echo "status=success" >> "$GITHUB_OUTPUT"
 
