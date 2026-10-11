@@ -20,14 +20,12 @@ env:
   PLATFORM: rockchip
   TZ: Asia/Shanghai
 
-  # Build optimization
-  CCACHE_SIZE: 12G
+  # ccache configuration - balanced for speed and stability
+  CCACHE_SIZE: 10G
   CCACHE_MAXFILES: 0
-  CCACHE_SLOPPINESS: file_macro,time_macros,include_file_ctime,include_file_mtime
-  CCACHE_COMPRESS: 1
-  CCACHE_COMPRESSLEVEL: 6
-  CCACHE_DIR: ${{ github.workspace }}/immortalwrt/.ccache
+  CCACHE_SLOPPINESS: file_macro,time_macros,include_file_ctime
   CCACHE_BASEDIR: ${{ github.workspace }}/immortalwrt
+  CCACHE_DIR: ${{ github.workspace }}/immortalwrt/.ccache
 
   UPLOAD_FIRMWARE: true
   UPLOAD_RELEASE: true
@@ -81,7 +79,6 @@ jobs:
         run: |
           uname -a
           df -hT
-          echo "CPU cores: $(nproc)"
 
       - name: Clone ImmortalWrt
         run: |
@@ -112,7 +109,7 @@ jobs:
         run: |
           cd "${WORK_DIR}"
           ./scripts/feeds update -a -f
-          ./scripts/feeds install -a -p rockchip
+          ./scripts/feeds install -a
 
       - name: Load configuration
         run: |
@@ -135,10 +132,9 @@ jobs:
         run: |
           cd "${WORK_DIR}"
           make defconfig
-          # Parallel download with 16 jobs
-          make download -j16 || true
-          make download -j16 || true
-          make download -j16
+          make download -j8 || true
+          make download -j8 || true
+          make download -j8
 
       - name: Show disk before build
         run: df -hT
@@ -150,15 +146,10 @@ jobs:
           export PATH="/usr/lib/ccache:$PATH"
           export CCACHE_DIR="${GITHUB_WORKSPACE}/${WORK_DIR}/.ccache"
           export CCACHE_BASEDIR="${GITHUB_WORKSPACE}/${WORK_DIR}"
-          export CCACHE_COMPRESS=1
-          export CCACHE_COMPRESSLEVEL=6
           
-          # Calculate optimal parallel jobs (use all cores)
-          BUILD_JOBS=$(nproc)
-          echo "Starting build with ${BUILD_JOBS} parallel jobs"
-          
-          # Build with minimal output to reduce I/O overhead
-          make -j${BUILD_JOBS} V=0
+          # Use conservative parallel jobs for stability (4 cores)
+          # This is safe and proven to work with ImmortalWrt
+          make -j4
           
           echo "status=success" >> "$GITHUB_OUTPUT"
 
@@ -167,10 +158,8 @@ jobs:
         run: |
           END=$(date +%s)
           COST=$((END-BUILD_START))
-          echo "Build Time: $((COST/60)) Minutes ($((COST%60)) Seconds)"
-          echo "---"
+          echo "Build Time: $((COST/60)) Minutes"
           ccache -s
-          df -hT
 
       - name: Organize files
         id: organize
@@ -224,5 +213,4 @@ jobs:
         run: |
           cd "${WORK_DIR}"
           rm -rf tmp
-          du -sh .ccache build_dir staging_dir 2>/dev/null || true
           df -hT
