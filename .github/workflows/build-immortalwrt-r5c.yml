@@ -181,14 +181,16 @@ jobs:
       - name: Generate release tag
         id: tag
         if: steps.organize.outputs.status == 'success'
-        run: echo "release_tag=latest-r5c" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "release_tag=latest-r5c" >> "$GITHUB_OUTPUT"
+          echo "RELEASE_NAME=R5C-$(date +%Y%m%d)" >> "$GITHUB_ENV"
 
       - name: Upload release
         uses: ncipollo/release-action@v1
         if: steps.organize.outputs.status == 'success'
         with:
           tag: latest-r5c
-          name: Latest NanoPi R5C Build
+          name: ${{ env.RELEASE_NAME }}
           allowUpdates: true
           removeArtifacts: true
           replacesArtifacts: true
