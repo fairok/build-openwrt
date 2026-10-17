@@ -208,6 +208,48 @@ jobs:
           keep_minimum_runs: 10
           token: ${{ secrets.GH_TOKEN }}
 
+      - name: Delete releases older than 30 days
+        if: always()
+        run: |
+          # Ensure jq is available for JSON parsing
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends jq
+
+          REPO="${{ github.repository }}"
+          DAYS=30
+          cutoff=$(date -d "-${DAYS} days" +%s)
+
+          echo "Deleting releases older than ${DAYS} days (before $(date -d "-${DAYS} days" +"%Y-%m-%d"))"
+
+          # Paginate through releases (100 per page)
+          page=1
+          while :; do
+            resp=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" "https://api.github.com/repos/${REPO}/releases?per_page=100&page=${page}")
+            count=$(echo "$resp" | jq length)
+            if [ "$count" -eq 0 ]; then
+              break
+            fi
+
+            echo "$resp" | jq -r '.[] | "\(.id)\t\(.tag_name)\t\(.published_at)"' | while IFS=$'\t' read -r id tag published_at; do
+              if [ -z "$published_at" ] || [ "$published_at" = "null" ]; then
+                continue
+              fi
+              published_ts=$(date -d "$published_at" +%s)
+              if [ "$published_ts" -lt "$cutoff" ]; then
+                echo "Deleting release $id (tag=$tag published=$published_at)"
+                curl -s -X DELETE -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" "https://api.github.com/repos/${REPO}/releases/$id" || true
+
+                # Also attempt to delete the tag ref if present
+                if [ -n "$tag" ] && [ "$tag" != "null" ]; then
+                  echo "Deleting tag refs/tags/$tag"
+                  curl -s -X DELETE -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" "https://api.github.com/repos/${REPO}/git/refs/tags/$tag" || true
+                fi
+              fi
+            done
+
+            page=$((page+1))
+          done
+
       - name: Cleanup
         if: always()
         run: |
