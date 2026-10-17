@@ -218,39 +218,83 @@ jobs:
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends jq
 
           REPO="${{ github.repository }}"
+          TOKEN="${{ secrets.GITHUB_TOKEN }}"
           DAYS=30
           cutoff=$(date -d "-${DAYS} days" +%s)
 
           echo "Deleting releases older than ${DAYS} days (before $(date -d "-${DAYS} days" +"%Y-%m-%d"))"
 
-          # Paginate through releases (100 per page)
+          # Temp file to remember tags that belong to (kept/deleted) releases
+          release_tags_file="/tmp/release_tags.txt"
+          : > "$release_tags_file"
+
+          # 1) Paginate through releases and delete old releases (and their tag refs)
           page=1
           while :; do
-            resp=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" "https://api.github.com/repos/${REPO}/releases?per_page=100&page=${page}")
+            resp=$(curl -s -H "Authorization: token ${TOKEN}" "https://api.github.com/repos/${REPO}/releases?per_page=100&page=${page}")
             count=$(echo "$resp" | jq length)
             if [ "$count" -eq 0 ]; then
               break
             fi
 
             echo "$resp" | jq -r '.[] | "\(.id)\t\(.tag_name)\t\(.published_at)"' | while IFS=$'\t' read -r id tag published_at; do
+              # record tag for later (so we don't delete tags that are used by releases)
+              if [ -n "$tag" ] && [ "$tag" != "null" ]; then
+                echo "$tag" >> "$release_tags_file"
+              fi
+
               if [ -z "$published_at" ] || [ "$published_at" = "null" ]; then
                 continue
               fi
               published_ts=$(date -d "$published_at" +%s)
               if [ "$published_ts" -lt "$cutoff" ]; then
                 echo "Deleting release $id (tag=$tag published=$published_at)"
-                curl -s -X DELETE -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" "https://api.github.com/repos/${REPO}/releases/$id" || true
+                curl -s -X DELETE -H "Authorization: token ${TOKEN}" "https://api.github.com/repos/${REPO}/releases/$id" || true
 
                 # Also attempt to delete the tag ref if present
                 if [ -n "$tag" ] && [ "$tag" != "null" ]; then
                   echo "Deleting tag refs/tags/$tag"
-                  curl -s -X DELETE -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" "https://api.github.com/repos/${REPO}/git/refs/tags/$tag" || true
+                  curl -s -X DELETE -H "Authorization: token ${TOKEN}" "https://api.github.com/repos/${REPO}/git/refs/tags/$tag" || true
                 fi
               fi
             done
 
             page=$((page+1))
           done
+
+          # 2) Now scan all tags and delete orphan/old tags that are NOT referenced by releases
+          echo "Scanning all tags and deleting orphan tags older than ${DAYS} days..."
+          tag_page=1
+          while :; do
+            tags_resp=$(curl -s -H "Authorization: token ${TOKEN}" "https://api.github.com/repos/${REPO}/tags?per_page=100&page=${tag_page}")
+            tags_count=$(echo "$tags_resp" | jq length)
+            if [ "$tags_count" -eq 0 ]; then
+              break
+            fi
+
+            echo "$tags_resp" | jq -r '.[] | "\(.name)\t\(.commit.sha)"' | while IFS=$'\t' read -r tag sha; do
+              # skip tags used by releases
+              if grep -Fxq "$tag" "$release_tags_file"; then
+                continue
+              fi
+
+              # get commit date for the tag's commit
+              commit_date=$(curl -s -H "Authorization: token ${TOKEN}" "https://api.github.com/repos/${REPO}/commits/${sha}" | jq -r '.commit.author.date')
+              if [ -z "$commit_date" ] || [ "$commit_date" = "null" ]; then
+                continue
+              fi
+              commit_ts=$(date -d "$commit_date" +%s)
+              if [ "$commit_ts" -lt "$cutoff" ]; then
+                echo "Deleting orphan tag $tag (commit date $commit_date)"
+                curl -s -X DELETE -H "Authorization: token ${TOKEN}" "https://api.github.com/repos/${REPO}/git/refs/tags/$tag" || true
+              fi
+            done
+
+            tag_page=$((tag_page+1))
+          done
+
+          # cleanup
+          rm -f "$release_tags_file"
 
       - name: Cleanup
         if: always()
