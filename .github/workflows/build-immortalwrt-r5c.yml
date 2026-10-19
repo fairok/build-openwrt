@@ -222,13 +222,15 @@ jobs:
           DAYS=30
           cutoff=$(date -d "-${DAYS} days" +%s)
 
-          echo "Deleting releases older than ${DAYS} days (before $(date -d "-${DAYS} days" +"%Y-%m-%d"))"
+          echo "Deleting releases older than ${DAYS} days (but keep the latest 5 releases) (before $(date -d "-${DAYS} days" +"%Y-%m-%d"))"
 
-          # Temp file to remember tags that belong to (kept/deleted) releases
-          release_tags_file="/tmp/release_tags.txt"
-          : > "$release_tags_file"
+          # Temp files
+          release_list_file="/tmp/releases_list.txt"
+          keep_tags_file="/tmp/keep_release_tags.txt"
+          : > "$release_list_file"
+          : > "$keep_tags_file"
 
-          # 1) Paginate through releases and delete old releases (and their tag refs)
+          # 1) Paginate through releases and gather them (API returns newest first)
           page=1
           while :; do
             resp=$(curl -s -H "Authorization: token ${TOKEN}" "https://api.github.com/repos/${REPO}/releases?per_page=100&page=${page}")
@@ -237,32 +239,40 @@ jobs:
               break
             fi
 
-            echo "$resp" | jq -r '.[] | "\(.id)\t\(.tag_name)\t\(.published_at)"' | while IFS=$'\t' read -r id tag published_at; do
-              # record tag for later (so we don't delete tags that are used by releases)
-              if [ -n "$tag" ] && [ "$tag" != "null" ]; then
-                echo "$tag" >> "$release_tags_file"
-              fi
-
-              if [ -z "$published_at" ] || [ "$published_at" = "null" ]; then
-                continue
-              fi
-              published_ts=$(date -d "$published_at" +%s)
-              if [ "$published_ts" -lt "$cutoff" ]; then
-                echo "Deleting release $id (tag=$tag published=$published_at)"
-                curl -s -X DELETE -H "Authorization: token ${TOKEN}" "https://api.github.com/repos/${REPO}/releases/$id" || true
-
-                # Also attempt to delete the tag ref if present
-                if [ -n "$tag" ] && [ "$tag" != "null" ]; then
-                  echo "Deleting tag refs/tags/$tag"
-                  curl -s -X DELETE -H "Authorization: token ${TOKEN}" "https://api.github.com/repos/${REPO}/git/refs/tags/$tag" || true
-                fi
-              fi
-            done
+            # save lines: id<TAB>tag_name<TAB>published_at
+            echo "$resp" | jq -r '.[] | "\(.id)\t\(.tag_name)\t\(.published_at)"' >> "$release_list_file"
 
             page=$((page+1))
           done
 
-          # 2) Now scan all tags and delete orphan/old tags that are NOT referenced by releases
+          total=$(wc -l < "$release_list_file" | tr -d ' ')
+          echo "Total releases found: $total"
+
+          if [ "$total" -le 5 ]; then
+            echo "There are $total releases, which is <= 5. Nothing to delete."
+          else
+            # Record tags to keep (first 5 releases)
+            head -n 5 "$release_list_file" | awk -F'\t' '{ if ($2 != "" && $2 != "null") print $2 }' > "$keep_tags_file"
+            echo "Keeping tags from latest 5 releases:"
+            cat "$keep_tags_file" || true
+
+            # Delete releases after the first 5
+            tail -n +6 "$release_list_file" | while IFS=$'\t' read -r id tag published_at; do
+              if [ -z "$id" ] || [ "$id" = "null" ]; then
+                continue
+              fi
+              echo "Deleting release $id (tag=$tag published=$published_at)"
+              curl -s -X DELETE -H "Authorization: token ${TOKEN}" "https://api.github.com/repos/${REPO}/releases/$id" || true
+
+              # Also attempt to delete the tag ref for this release (if present)
+              if [ -n "$tag" ] && [ "$tag" != "null" ]; then
+                echo "Deleting tag refs/tags/$tag (release deletion step)"
+                curl -s -X DELETE -H "Authorization: token ${TOKEN}" "https://api.github.com/repos/${REPO}/git/refs/tags/$tag" || true
+              fi
+            done
+          fi
+
+          # 2) Now scan all tags and delete orphan/old tags that are NOT referenced by kept releases
           echo "Scanning all tags and deleting orphan tags older than ${DAYS} days..."
           tag_page=1
           while :; do
@@ -273,8 +283,9 @@ jobs:
             fi
 
             echo "$tags_resp" | jq -r '.[] | "\(.name)\t\(.commit.sha)"' | while IFS=$'\t' read -r tag sha; do
-              # skip tags used by releases
-              if grep -Fxq "$tag" "$release_tags_file"; then
+              # skip tags used by kept releases
+              if [ -f "$keep_tags_file" ] && grep -Fxq "$tag" "$keep_tags_file"; then
+                echo "Skipping tag $tag because it belongs to one of the latest 5 releases"
                 continue
               fi
 
@@ -294,7 +305,7 @@ jobs:
           done
 
           # cleanup
-          rm -f "$release_tags_file"
+          rm -f "$release_list_file" "$keep_tags_file"
 
       - name: Cleanup
         if: always()
