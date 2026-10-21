@@ -182,14 +182,14 @@ jobs:
         id: tag
         if: steps.organize.outputs.status == 'success'
         run: |
-          echo "release_tag=R5S-$(date +%Y%m%d)" >> "$GITHUB_OUTPUT"
+          echo "RELEASE_TAG=R5S-$(date +%Y%m%d)" >> "$GITHUB_ENV"
           echo "RELEASE_NAME=R5S-$(date +%Y%m%d)" >> "$GITHUB_ENV"
 
       - name: Upload release
         uses: ncipollo/release-action@v1
         if: steps.organize.outputs.status == 'success'
         with:
-          tag: latest-r5s
+          tag: ${{ env.RELEASE_TAG }}
           name: ${{ env.RELEASE_NAME }}
           allowUpdates: true
           removeArtifacts: true
