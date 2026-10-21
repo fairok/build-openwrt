@@ -182,7 +182,7 @@ jobs:
         id: tag
         if: steps.organize.outputs.status == 'success'
         run: |
-          echo "release_tag=latest-r5s" >> "$GITHUB_OUTPUT"
+          echo "release_tag=R5S-$(date +%Y%m%d)" >> "$GITHUB_OUTPUT"
           echo "RELEASE_NAME=R5S-$(date +%Y%m%d)" >> "$GITHUB_ENV"
 
       - name: Upload release
